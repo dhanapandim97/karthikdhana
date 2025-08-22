@@ -1,39 +1,31 @@
-package com.td.tdi.api.ipirg.service;
-
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.td.tdi.api.ipirg.model.request.soap.register.RegisterIPIBusinessAggregationRequest;
-import com.td.tdi.api.ipirg.model.request.soap.register.TDEnvelope;
-import com.td.tdi.api.ipirg.model.request.soap.register.Messages;
-import com.td.tdi.api.ipirg.model.request.soap.register.RegisterIPIBusinessAggregationRequestPayload;
-import com.td.tdi.api.ipirg.model.request.soap.register.Party;
-import com.td.tdi.api.ipirg.model.response.soap.register.RegisterIPIBusinessAggregationResponsePayload;
-import com.td.tdi.api.ipirg.service.external.GeneratorService;
-import com.td.tdi.api.ipirg.service.external.PartyAPIExecutor;
-import com.td.tdi.api.ipirg.service.exception.GeneratorException;
-import com.td.tdi.api.ipirg.service.exception.RegisterException;
-import com.td.tdi.api.ipirg.service.exception.RegisterExceptionBuilder;
-import com.td.tdi.api.ipirg.service.external.DecryptResponse;
-
+import org.apache.http.HttpEntity;
 import org.apache.http.HttpResponse;
 import org.apache.http.StatusLine;
-import org.apache.http.HttpEntity;
-import org.apache.http.util.EntityUtils;
-
+import org.apache.http.entity.StringEntity;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.*;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.MockitoAnnotations;
+
+import java.nio.charset.StandardCharsets;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 class RegisterServiceTest {
 
     @Mock
     private GeneratorService generatorService;
+
     @Mock
     private ObjectMapper objectMapper;
+
     @Mock
     private PartyAPIExecutor apiExecutor;
+
     @Mock
     private RegisterExceptionBuilder registerExceptionBuilder;
 
@@ -44,124 +36,157 @@ class RegisterServiceTest {
     void setUp() {
         MockitoAnnotations.openMocks(this);
         registerService = new RegisterService(
-                "http://dummy-url",
+                "http://mock-url",
                 generatorService,
-                objectMapper,
+                new ObjectMapper(),
                 apiExecutor,
                 registerExceptionBuilder
         );
     }
 
-    private RegisterIPIBusinessAggregationRequest buildValidRequest(String altPartyId) {
-        Party party = new Party();
-        party.setAlternatePartyId(altPartyId);
-
-        RegisterIPIBusinessAggregationRequestPayload payload = new RegisterIPIBusinessAggregationRequestPayload();
-        payload.setParty(party);
-
-        Messages messages = new Messages();
-        messages.setRegisterIPIBusinessAggregationRequestPayload(payload);
-
-        TDEnvelope envelope = new TDEnvelope();
-        envelope.setMessages(messages);
-
-        return RegisterIPIBusinessAggregationRequest.builder()
-                .tdenvelope(envelope)
-                .build();
-    }
-
     @Test
     void testRegisterIPISuccess() throws Exception {
-        RegisterIPIBusinessAggregationRequest request = buildValidRequest("ALT123");
+        // given
+        RegisterIPIBusinessAggregationRequest request =
+                RegisterIPIBusinessAggregationRequest.builder()
+                        .tdenvelope(new TDEnvelope()) // minimal stub
+                        .build();
 
-        DecryptResponse decryptResponse = mock(DecryptResponse.class);
-        when(generatorService.decryptIPIGeneratorOperation(any()))
+        // mock decrypt response
+        DecryptResponse decryptResponse = new DecryptResponse("decryptedPartyId", "altPartyId");
+        when(generatorService.decryptIPIGeneratorOperation(any(DecryptRequest.class)))
                 .thenReturn(decryptResponse);
-        when(decryptResponse.decryptedValue()).thenReturn("ALT123");
-        when(decryptResponse.seedValue()).thenReturn("SEED123");
+
+        // mock HTTP 201 response
+        String mockJson = "{\"registeredIPI\":\"altPartyId\"}";
+        HttpEntity entity = new StringEntity(mockJson, StandardCharsets.UTF_8);
+
+        StatusLine statusLine = mock(StatusLine.class);
+        when(statusLine.getStatusCode()).thenReturn(201);
 
         HttpResponse httpResponse = mock(HttpResponse.class);
-        StatusLine statusLine = mock(StatusLine.class);
-        HttpEntity entity = mock(HttpEntity.class);
-
-        when(apiExecutor.makePOSTRequest(anyString(), anyString(), any())).thenAnswer(invocation -> {
-            return httpResponse;
-        });
-
         when(httpResponse.getStatusLine()).thenReturn(statusLine);
-        when(statusLine.getStatusCode()).thenReturn(201);
         when(httpResponse.getEntity()).thenReturn(entity);
-        when(EntityUtils.toString(entity)).thenReturn("{\"registeredIPI\":\"ALT123\"}");
 
-        when(objectMapper.writeValueAsString(any())).thenReturn("{json}");
-        when(objectMapper.readValue(anyString(), eq(String.class))).thenReturn("success");
+        when(apiExecutor.makePOSTRequest(anyString(), anyString(), any()))
+                .thenReturn(httpResponse);
 
-        RegisterIPIBusinessAggregationResponsePayload resp =
+        // when
+        RegisterIPIBusinessAggregationResponsePayload response =
                 registerService.registerIPIBusinessAggregation(request, "corrId");
 
-        assertEquals("ALT123", resp.getRegisteredIPI());
+        // then
+        assertNotNull(response);
+        assertEquals("altPartyId", response.getRegisteredIPI());
     }
 
     @Test
-    void testDecryptMissingThrowsException() throws Exception {
-        RegisterIPIBusinessAggregationRequest request = buildValidRequest("ALT123");
+    void testNullDecryptValuesThrowsException() throws Exception {
+        // given
+        RegisterIPIBusinessAggregationRequest request =
+                RegisterIPIBusinessAggregationRequest.builder()
+                        .tdenvelope(new TDEnvelope())
+                        .build();
 
-        DecryptResponse decryptResponse = mock(DecryptResponse.class);
-        when(generatorService.decryptIPIGeneratorOperation(any())).thenReturn(decryptResponse);
-        when(decryptResponse.decryptedValue()).thenReturn(null);
-        when(decryptResponse.seedValue()).thenReturn(null);
+        DecryptResponse decryptResponse = new DecryptResponse(null, null);
+        when(generatorService.decryptIPIGeneratorOperation(any(DecryptRequest.class)))
+                .thenReturn(decryptResponse);
 
+        // expect
         assertThrows(GeneratorException.class,
                 () -> registerService.registerIPIBusinessAggregation(request, "corrId"));
     }
 
     @Test
-    void testWarningResponseThrowsRegisterException() throws Exception {
-        RegisterIPIBusinessAggregationRequest request = buildValidRequest("ALT123");
+    void testNon201ResponseWithNullBodyThrowsRegisterException() throws Exception {
+        RegisterIPIBusinessAggregationRequest request =
+                RegisterIPIBusinessAggregationRequest.builder()
+                        .tdenvelope(new TDEnvelope())
+                        .build();
 
-        DecryptResponse decryptResponse = mock(DecryptResponse.class);
-        when(generatorService.decryptIPIGeneratorOperation(any())).thenReturn(decryptResponse);
-        when(decryptResponse.decryptedValue()).thenReturn("ALT123");
-        when(decryptResponse.seedValue()).thenReturn("SEED123");
+        DecryptResponse decryptResponse = new DecryptResponse("decryptedPartyId", "altPartyId");
+        when(generatorService.decryptIPIGeneratorOperation(any(DecryptRequest.class)))
+                .thenReturn(decryptResponse);
+
+        // mock 400 response with null entity
+        StatusLine statusLine = mock(StatusLine.class);
+        when(statusLine.getStatusCode()).thenReturn(400);
 
         HttpResponse httpResponse = mock(HttpResponse.class);
-        StatusLine statusLine = mock(StatusLine.class);
-        HttpEntity entity = mock(HttpEntity.class);
-
-        when(apiExecutor.makePOSTRequest(anyString(), anyString(), any())).thenReturn(httpResponse);
         when(httpResponse.getStatusLine()).thenReturn(statusLine);
-        when(statusLine.getStatusCode()).thenReturn(400);
-        when(httpResponse.getEntity()).thenReturn(entity);
-        when(EntityUtils.toString(entity)).thenReturn("{\"warning\":\"something\"}");
+        when(httpResponse.getEntity()).thenReturn(null);
 
-        when(apiExecutor.isStatusResponse(anyString())).thenReturn(true);
-        when(objectMapper.readValue(anyString(), eq(com.td.tdi.api.ipirg.model.response.Warning.class)))
-                .thenReturn(new com.td.tdi.api.ipirg.model.response.Warning("ERR01"));
+        when(apiExecutor.makePOSTRequest(anyString(), anyString(), any()))
+                .thenReturn(httpResponse);
 
-        when(registerExceptionBuilder.createRegisterException(any()))
-                .thenReturn(new RegisterException("ERR01"));
-
+        // expect
         assertThrows(RegisterException.class,
                 () -> registerService.registerIPIBusinessAggregation(request, "corrId"));
     }
 
     @Test
-    void testRuntimeFailureBranch() throws Exception {
-        RegisterIPIBusinessAggregationRequest request = buildValidRequest("ALT123");
+    void testNon201ResponseWithWarning() throws Exception {
+        RegisterIPIBusinessAggregationRequest request =
+                RegisterIPIBusinessAggregationRequest.builder()
+                        .tdenvelope(new TDEnvelope())
+                        .build();
 
-        DecryptResponse decryptResponse = mock(DecryptResponse.class);
-        when(generatorService.decryptIPIGeneratorOperation(any())).thenReturn(decryptResponse);
-        when(decryptResponse.decryptedValue()).thenReturn("ALT123");
-        when(decryptResponse.seedValue()).thenReturn("SEED123");
+        DecryptResponse decryptResponse = new DecryptResponse("decryptedPartyId", "altPartyId");
+        when(generatorService.decryptIPIGeneratorOperation(any(DecryptRequest.class)))
+                .thenReturn(decryptResponse);
+
+        // mock 400 response with warning JSON
+        String warningJson = "{\"status\":\"WARN_001\"}";
+        HttpEntity entity = new StringEntity(warningJson, StandardCharsets.UTF_8);
+
+        StatusLine statusLine = mock(StatusLine.class);
+        when(statusLine.getStatusCode()).thenReturn(400);
 
         HttpResponse httpResponse = mock(HttpResponse.class);
-        StatusLine statusLine = mock(StatusLine.class);
-
-        when(apiExecutor.makePOSTRequest(anyString(), anyString(), any())).thenReturn(httpResponse);
         when(httpResponse.getStatusLine()).thenReturn(statusLine);
-        when(statusLine.getStatusCode()).thenReturn(500);
-        when(httpResponse.getEntity()).thenReturn(null);
+        when(httpResponse.getEntity()).thenReturn(entity);
 
+        when(apiExecutor.makePOSTRequest(anyString(), anyString(), any()))
+                .thenReturn(httpResponse);
+
+        Warning warning = new Warning("WARN_001");
+        when(objectMapper.readValue(warningJson, Warning.class)).thenReturn(warning);
+        when(registerExceptionBuilder.createRegisterException("WARN_001"))
+                .thenReturn(new RegisterException("WARN_001"));
+
+        // expect
+        assertThrows(RegisterException.class,
+                () -> registerService.registerIPIBusinessAggregation(request, "corrId"));
+    }
+
+    @Test
+    void testNon201ResponseWithPlainErrorThrowsRuntimeException() throws Exception {
+        RegisterIPIBusinessAggregationRequest request =
+                RegisterIPIBusinessAggregationRequest.builder()
+                        .tdenvelope(new TDEnvelope())
+                        .build();
+
+        DecryptResponse decryptResponse = new DecryptResponse("decryptedPartyId", "altPartyId");
+        when(generatorService.decryptIPIGeneratorOperation(any(DecryptRequest.class)))
+                .thenReturn(decryptResponse);
+
+        // mock 500 response with plain error body
+        String errorJson = "SIMPLE_ERROR";
+        HttpEntity entity = new StringEntity(errorJson, StandardCharsets.UTF_8);
+
+        StatusLine statusLine = mock(StatusLine.class);
+        when(statusLine.getStatusCode()).thenReturn(500);
+
+        HttpResponse httpResponse = mock(HttpResponse.class);
+        when(httpResponse.getStatusLine()).thenReturn(statusLine);
+        when(httpResponse.getEntity()).thenReturn(entity);
+
+        when(apiExecutor.makePOSTRequest(anyString(), anyString(), any()))
+                .thenReturn(httpResponse);
+
+        when(apiExecutor.isStatusResponse(errorJson)).thenReturn(false);
+
+        // expect
         assertThrows(RuntimeException.class,
                 () -> registerService.registerIPIBusinessAggregation(request, "corrId"));
     }
