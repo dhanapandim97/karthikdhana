@@ -1,203 +1,152 @@
-package com.td.tdi.api.ipirg.service;
+package com.td.tdi.api.ipirg.exception;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.td.tdi.api.ipirg.exception.RegisterException;
-import com.td.tdi.api.ipirg.model.request.soap.register.*;
-import com.td.tdi.api.ipirg.model.response.register.RegisterIPIBusinessAggregationResponsePayload;
-import com.td.tdi.api.ipirg.model.response.register.Warning;
-import com.td.tdi.api.ipirg.model.response.register.AddPartyAlternatePartyKeyResponse;
-import com.td.tdi.api.ipirg.service.helper.DecryptResponse;
-import org.apache.http.HttpEntity;
-import org.apache.http.StatusLine;
-import org.apache.http.client.methods.CloseableHttpResponse;
-import org.apache.http.entity.StringEntity;
+import com.td.tdi.api.ipirg.model.request.soap.register.RegisterIPIBusinessAggregationRequest;
+import com.td.tdi.api.ipirg.model.request.soap.register.TDEnvelope;
+import com.td.tdi.api.ipirg.model.request.soap.register.Messages;
+import com.td.tdi.api.ipirg.model.request.soap.register.Header;
+import com.td.tdi.api.ipirg.model.request.soap.register.UserProfile;
+import com.td.tdi.api.ipirg.model.request.soap.register.Party;
+import com.td.tdi.api.ipirg.model.request.soap.register.RegisterIPIBusinessAggregationRequestPayload;
+
+import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
+import org.springframework.context.MessageSource;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.validation.ObjectError;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 
-import java.io.IOException;
+import java.util.Collections;
+import java.util.Locale;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
-class RegisterServiceTest {
+class GlobalExceptionHandlerTest {
+
+    private GlobalExceptionHandler handler;
 
     @Mock
-    private GeneratorService generatorService;
+    private HttpServletRequest servletRequest;
 
     @Mock
-    private ApiExecutor apiExecutor;
-
-    @Mock
-    private ObjectMapper objectMapper;
-
-    @InjectMocks
-    private RegisterService registerService;
+    private MessageSource messageSource;
 
     @BeforeEach
-    void setUp() {
+    void setup() {
         MockitoAnnotations.openMocks(this);
+        handler = new GlobalExceptionHandler(messageSource);
     }
 
-    // 🔨 Helper method to build SOAP request
+    @Test
+    void testHandleValidationError_LookupUri() throws Exception {
+        // given
+        when(servletRequest.getRequestURI()).thenReturn("/lookup");
+        when(messageSource.getMessage(anyString(), isNull(), any(Locale.class)))
+                .thenReturn("Validation failed");
+
+        ObjectError error = new ObjectError("field", "VALID_CODE");
+        MethodArgumentNotValidException ex = new MethodArgumentNotValidException(null,
+                new org.springframework.validation.BeanPropertyBindingResult(new Object(), "test"));
+        ex.getBindingResult().addError(error);
+
+        // when
+        ResponseEntity<?> response = handler.handleValidationError(ex, servletRequest);
+
+        // then
+        assertEquals(500, response.getStatusCode().value());
+        assertEquals(MediaType.APPLICATION_XML, response.getHeaders().getContentType());
+        assertNotNull(response.getBody());
+    }
+
+    @Test
+    void testHandleValidationError_GeneratorUri() throws Exception {
+        when(servletRequest.getRequestURI()).thenReturn("/generator");
+        when(messageSource.getMessage(anyString(), isNull(), any(Locale.class)))
+                .thenReturn("Generator failed");
+
+        ObjectError error = new ObjectError("field", "VALID_CODE");
+        MethodArgumentNotValidException ex = new MethodArgumentNotValidException(null,
+                new org.springframework.validation.BeanPropertyBindingResult(new Object(), "test"));
+        ex.getBindingResult().addError(error);
+
+        ResponseEntity<?> response = handler.handleValidationError(ex, servletRequest);
+
+        assertEquals(500, response.getStatusCode().value());
+    }
+
+    @Test
+    void testHandleValidationError_RegUri() throws Exception {
+        when(servletRequest.getRequestURI()).thenReturn("/reg");
+        when(messageSource.getMessage(anyString(), isNull(), any(Locale.class)))
+                .thenReturn("Registration failed");
+
+        ObjectError error = new ObjectError("field", "VALID_CODE");
+        MethodArgumentNotValidException ex = new MethodArgumentNotValidException(null,
+                new org.springframework.validation.BeanPropertyBindingResult(new Object(), "test"));
+        ex.getBindingResult().addError(error);
+
+        ResponseEntity<?> response = handler.handleValidationError(ex, servletRequest);
+
+        assertEquals(500, response.getStatusCode().value());
+    }
+
+    @Test
+    void testHandleValidationError_DefaultCase_ThrowsException() {
+        when(servletRequest.getRequestURI()).thenReturn("/unexpected");
+
+        ObjectError error = new ObjectError("field", "INVALID_CODE");
+        MethodArgumentNotValidException ex = new MethodArgumentNotValidException(null,
+                new org.springframework.validation.BeanPropertyBindingResult(new Object(), "test"));
+        ex.getBindingResult().addError(error);
+
+        assertThrows(IllegalArgumentException.class,
+                () -> handler.handleValidationError(ex, servletRequest));
+    }
+
+    // ✅ Helper to build nested SOAP request
     private RegisterIPIBusinessAggregationRequest buildSoapRequest() {
-        Header header = Header.builder()
-                .messageID("001")
-                .correlationID("corr-123")
-                .sessionID("987654")
-                .testset("R2")
-                .testsystem("SIT")
-                .build();
+        Header header = new Header();
+        header.setMessageID("001");
+        header.setCorrelationID("corr-123");
+        header.setSessionID("987654");
+        header.setTestset("R2");
+        header.setTestsystem("SIT");
 
-        UserProfile userProfile = UserProfile.builder()
-                .userId("jsmith01")
-                .locationId("1775")
-                .consumerId("CSC")
-                .build();
+        UserProfile userProfile = new UserProfile();
+        userProfile.setUserId("jsmith01");
+        userProfile.setLocationId("1775");
+        userProfile.setConsumerId("CSC");
 
-        Party party = Party.builder()
-                .alternatePartyId("AXU337FI4335388BCAF")
-                .build();
+        Party party = new Party();
+        party.setAlternatePartyId("AXU337FI4335388BCAF");
 
         RegisterIPIBusinessAggregationRequestPayload payload =
-                RegisterIPIBusinessAggregationRequestPayload.builder()
-                        .userProfile(userProfile)
-                        .party(party)
-                        .build();
+                new RegisterIPIBusinessAggregationRequestPayload();
+        payload.setUserProfile(userProfile);
+        payload.setParty(party);
 
-        Messages messages = Messages.builder()
-                .header(header)
-                .registerIPIBusinessAggregationRequestPayload(payload)
-                .build();
+        Messages messages = new Messages();
+        messages.setHeader(header);
+        messages.setRegisterIPIBusinessAggregationRequestPayload(payload);
 
-        TDEnvelope envelope = TDEnvelope.builder()
-                .messages(messages)
-                .build();
+        TDEnvelope envelope = new TDEnvelope();
+        envelope.setMessages(messages);
 
+        // ✅ Only top bean uses @Builder
         return RegisterIPIBusinessAggregationRequest.builder()
                 .tdenvelope(envelope)
                 .build();
     }
 
     @Test
-    void testHappyPath() throws Exception {
+    void testSoapRequestBuilderWorks() {
         RegisterIPIBusinessAggregationRequest request = buildSoapRequest();
-
-        // Mock decrypt
-        DecryptResponse decryptResponse = new DecryptResponse("decryptedIPI", "seedVal");
-        when(generatorService.decryptIPIGeneratorOperation(any())).thenReturn(decryptResponse);
-
-        // Mock HTTP 201
-        CloseableHttpResponse mockResponse = mock(CloseableHttpResponse.class);
-        StatusLine statusLine = mock(StatusLine.class);
-        when(statusLine.getStatusCode()).thenReturn(201);
-        when(mockResponse.getStatusLine()).thenReturn(statusLine);
-        HttpEntity entity = new StringEntity("{\"dummy\":\"json\"}");
-        when(mockResponse.getEntity()).thenReturn(entity);
-
-        when(apiExecutor.makePOSTRequest(anyString(), anyString(), any())).thenReturn(mockResponse);
-        when(objectMapper.readValue(anyString(), eq(AddPartyAlternatePartyKeyResponse.class)))
-                .thenReturn(new AddPartyAlternatePartyKeyResponse());
-
-        RegisterIPIBusinessAggregationResponsePayload response =
-                registerService.registerIPIBusinessAggregation(request, "corrId");
-
-        assertNotNull(response);
-        assertEquals("decryptedIPI", response.getRegisteredIPI());
-    }
-
-    @Test
-    void testNullResponseThrowsException() throws Exception {
-        RegisterIPIBusinessAggregationRequest request = buildSoapRequest();
-
-        when(generatorService.decryptIPIGeneratorOperation(any()))
-                .thenReturn(new DecryptResponse("decryptedIPI", "seedVal"));
-
-        when(apiExecutor.makePOSTRequest(anyString(), anyString(), any())).thenReturn(null);
-
-        assertThrows(RegisterException.class,
-                () -> registerService.registerIPIBusinessAggregation(request, "corrId"));
-    }
-
-    @Test
-    void testNon201ResponseThrowsException() throws Exception {
-        RegisterIPIBusinessAggregationRequest request = buildSoapRequest();
-
-        when(generatorService.decryptIPIGeneratorOperation(any()))
-                .thenReturn(new DecryptResponse("decryptedIPI", "seedVal"));
-
-        CloseableHttpResponse mockResponse = mock(CloseableHttpResponse.class);
-        StatusLine statusLine = mock(StatusLine.class);
-        when(statusLine.getStatusCode()).thenReturn(400);
-        when(mockResponse.getStatusLine()).thenReturn(statusLine);
-        when(apiExecutor.makePOSTRequest(anyString(), anyString(), any())).thenReturn(mockResponse);
-
-        assertThrows(RegisterException.class,
-                () -> registerService.registerIPIBusinessAggregation(request, "corrId"));
-    }
-
-    @Test
-    void testObjectMapperFailureThrowsException() throws Exception {
-        RegisterIPIBusinessAggregationRequest request = buildSoapRequest();
-
-        when(generatorService.decryptIPIGeneratorOperation(any()))
-                .thenReturn(new DecryptResponse("decryptedIPI", "seedVal"));
-
-        CloseableHttpResponse mockResponse = mock(CloseableHttpResponse.class);
-        StatusLine statusLine = mock(StatusLine.class);
-        when(statusLine.getStatusCode()).thenReturn(201);
-        when(mockResponse.getStatusLine()).thenReturn(statusLine);
-        HttpEntity entity = new StringEntity("{\"dummy\":\"json\"}");
-        when(mockResponse.getEntity()).thenReturn(entity);
-
-        when(apiExecutor.makePOSTRequest(anyString(), anyString(), any())).thenReturn(mockResponse);
-        when(objectMapper.readValue(anyString(), eq(AddPartyAlternatePartyKeyResponse.class)))
-                .thenThrow(new IOException("Parsing failed"));
-
-        assertThrows(RegisterException.class,
-                () -> registerService.registerIPIBusinessAggregation(request, "corrId"));
-    }
-
-    @Test
-    void testWarningInResponseThrowsException() throws Exception {
-        RegisterIPIBusinessAggregationRequest request = buildSoapRequest();
-
-        when(generatorService.decryptIPIGeneratorOperation(any()))
-                .thenReturn(new DecryptResponse("decryptedIPI", "seedVal"));
-
-        CloseableHttpResponse mockResponse = mock(CloseableHttpResponse.class);
-        StatusLine statusLine = mock(StatusLine.class);
-        when(statusLine.getStatusCode()).thenReturn(201);
-        when(mockResponse.getStatusLine()).thenReturn(statusLine);
-        HttpEntity entity = new StringEntity("{\"dummy\":\"json\"}");
-        when(mockResponse.getEntity()).thenReturn(entity);
-
-        when(apiExecutor.makePOSTRequest(anyString(), anyString(), any())).thenReturn(mockResponse);
-
-        AddPartyAlternatePartyKeyResponse withWarning = new AddPartyAlternatePartyKeyResponse();
-        Warning warning = new Warning();
-        warning.setStatus("400");
-        withWarning.setWarning(warning);
-
-        when(objectMapper.readValue(anyString(), eq(AddPartyAlternatePartyKeyResponse.class)))
-                .thenReturn(withWarning);
-
-        assertThrows(RegisterException.class,
-                () -> registerService.registerIPIBusinessAggregation(request, "corrId"));
-    }
-
-    @Test
-    void testDecryptFailureThrowsException() throws Exception {
-        RegisterIPIBusinessAggregationRequest request = buildSoapRequest();
-
-        when(generatorService.decryptIPIGeneratorOperation(any()))
-                .thenThrow(new RuntimeException("Decrypt failed"));
-
-        assertThrows(RegisterException.class,
-                () -> registerService.registerIPIBusinessAggregation(request, "corrId"));
+        assertNotNull(request);
+        assertNotNull(request.getTdenvelope());
+        assertEquals("001", request.getTdenvelope().getMessages().getHeader().getMessageID());
     }
 }
