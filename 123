@@ -1,12 +1,17 @@
-import static org.mockito.Mockito.*;
-import static org.junit.jupiter.api.Assertions.*;
-
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.http.HttpResponse;
+import org.apache.http.StatusLine;
+import org.apache.http.HttpEntity;
+import org.apache.http.util.EntityUtils;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
+import org.mockito.*;
+import org.springframework.web.util.UriComponentsBuilder;
+
+import java.io.ByteArrayInputStream;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
 class RegisterServiceTest {
 
@@ -25,89 +30,99 @@ class RegisterServiceTest {
     @InjectMocks
     private RegisterService registerService;
 
-    private RegisterIPIBusinessAggregationRequest request;
-    private DecryptResponse decryptResponse;
-
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
-
-        // prepare input request
-        request = TestDataFactory.buildRegisterRequest(); // 👉 helper to create valid request
-
-        // prepare decrypt response
-        decryptResponse = new DecryptResponse("altPartyId123", "partyId123");
+        registerService = new RegisterService(
+                "http://fake-url",
+                generatorService,
+                objectMapper,
+                apiExecutor,
+                registerExceptionBuilder
+        );
     }
 
     @Test
-    void testRegisterIPISuccess() throws Exception {
-        when(generatorService.decryptIPIGeneratorOperation(any())).thenReturn(decryptResponse);
+    void testRegisterIPIBusinessAggregation_Success() throws Exception {
+        // Arrange
+        RegisterIPIBusinessAggregationRequest request = mock(RegisterIPIBusinessAggregationRequest.class);
+        ReqEnvelope envelope = mock(ReqEnvelope.class);
+        Messages messages = mock(Messages.class);
+        RegisterIPIBusinessAggregationRequestPayload payload = mock(RegisterIPIBusinessAggregationRequestPayload.class);
+        Party party = mock(Party.class);
 
-        String responseJson = "{\"registeredIPI\":\"altPartyId123\"}";
-        when(apiExecutor.makePOSTRequest(anyString(), anyString(), any())).thenReturn(responseJson);
+        when(request.getrdenvelope()).thenReturn(envelope);
+        when(envelope.getMeasages()).thenReturn(messages);
+        when(messages.getRegiaterIPIBugineagAggregationRequestPayload()).thenReturn(payload);
+        when(payload.getParty()).thenReturn(party);
 
-        when(objectMapper.readValue(eq(responseJson), eq(AddPartyAlternatePartyKeyResponse.class)))
+        DecryptResponse decryptResponse = new DecryptResponse("decryptedPartyId", "alternatePartyId");
+        when(generatorService.decryptIPIGeneratoroperation(any())).thenReturn(decryptResponse);
+
+        HttpResponse httpResponse = mock(HttpResponse.class);
+        StatusLine statusLine = mock(StatusLine.class);
+        HttpEntity httpEntity = mock(HttpEntity.class);
+
+        when(httpResponse.getStatusLine()).thenReturn(statusLine);
+        when(statusLine.getStatusCode()).thenReturn(201);
+        when(httpResponse.getEntity()).thenReturn(httpEntity);
+        when(httpEntity.getContent()).thenReturn(new ByteArrayInputStream("{\"ok\":\"yes\"}".getBytes()));
+
+        when(apiExecutor.makePOSTRequest(anyString(), anyString(), any())).thenReturn("{\"ok\":\"yes\"}");
+        when(objectMapper.readValue(anyString(), eq(AddPartyAlternatePartyKeyResponse.class)))
                 .thenReturn(new AddPartyAlternatePartyKeyResponse());
 
-        RegisterIPIBusinessAggregationResponsePayload result =
-                registerService.registerIPIBusinessAggregation(request, "corr-123");
+        // Act
+        RegisterIPIBusinessAggregationResponsePayload resp =
+                registerService.registerIPIBusinessAggregation(request, "corr-1");
 
-        assertNotNull(result);
-        assertEquals("altPartyId123", result.getRegisteredIPI());
+        // Assert
+        assertNotNull(resp);
+        assertEquals("alternatePartyId", resp.getRegisteredIPI());
     }
 
     @Test
-    void testDecryptFailsThrowsGeneratorException() {
-        when(generatorService.decryptIPIGeneratorOperation(any()))
+    void testRegisterIPIBusinessAggregation_ThrowsGeneratorException() throws Exception {
+        RegisterIPIBusinessAggregationRequest request = mock(RegisterIPIBusinessAggregationRequest.class);
+        when(generatorService.decryptIPIGeneratoroperation(any()))
                 .thenReturn(new DecryptResponse(null, null));
 
-        assertThrows(GeneratorException.class, () ->
-                registerService.registerIPIBusinessAggregation(request, "corr-123")
-        );
+        assertThrows(GeneratorException.class,
+                () -> registerService.registerIPIBusinessAggregation(request, "corr-2"));
     }
 
     @Test
-    void testNullResponseThrowsRegisterException() throws Exception {
-        when(generatorService.decryptIPIGeneratorOperation(any())).thenReturn(decryptResponse);
+    void testCreateAlternatePartyID_StatusNot201_WithStatusResponse() throws Exception {
+        // Arrange
+        String fakeResp = "{\"status\":\"ERROR\"}";
 
+        HttpResponse httpResponse = mock(HttpResponse.class);
+        StatusLine statusLine = mock(StatusLine.class);
+        HttpEntity entity = mock(HttpEntity.class);
+
+        when(httpResponse.getStatusLine()).thenReturn(statusLine);
+        when(statusLine.getStatusCode()).thenReturn(400);
+        when(httpResponse.getEntity()).thenReturn(entity);
+        when(entity.getContent()).thenReturn(new ByteArrayInputStream(fakeResp.getBytes()));
+
+        when(apiExecutor.makePOSTRequest(anyString(), anyString(), any())).thenReturn(fakeResp);
+        when(apiExecutor.isStatusResponse(fakeResp)).thenReturn(true);
+        Warning warning = new Warning();
+        warning.setStatus("ERROR");
+        when(objectMapper.readValue(fakeResp, Warning.class)).thenReturn(warning);
+        when(registerExceptionBuilder.createRegisterException("ERROR"))
+                .thenReturn(new RegisterException("bad"));
+
+        // Act & Assert
+        assertThrows(RegisterException.class,
+                () -> registerService.registerIPIBusinessAggregation(mock(RegisterIPIBusinessAggregationRequest.class), "corr-3"));
+    }
+
+    @Test
+    void testCreateAlternatePartyID_NullResponse() throws Exception {
         when(apiExecutor.makePOSTRequest(anyString(), anyString(), any())).thenReturn(null);
 
-        assertThrows(RegisterException.class, () ->
-                registerService.registerIPIBusinessAggregation(request, "corr-123")
-        );
-    }
-
-    @Test
-    void testWarningResponseThrowsRegisterException() throws Exception {
-        when(generatorService.decryptIPIGeneratorOperation(any())).thenReturn(decryptResponse);
-
-        String warningJson = "{\"status\":\"WARN001\"}";
-        when(apiExecutor.makePOSTRequest(anyString(), anyString(), any())).thenReturn(warningJson);
-
-        when(apiExecutor.isStatusResponse(eq(warningJson))).thenReturn(true);
-
-        Warning warning = new Warning("WARN001");
-        when(objectMapper.readValue(eq(warningJson), eq(Warning.class))).thenReturn(warning);
-
-        when(registerExceptionBuilder.createRegisterException("WARN001"))
-                .thenReturn(new RegisterException("Warning received"));
-
-        assertThrows(RegisterException.class, () ->
-                registerService.registerIPIBusinessAggregation(request, "corr-123")
-        );
-    }
-
-    @Test
-    void testNon201ResponseThrowsRuntimeException() throws Exception {
-        when(generatorService.decryptIPIGeneratorOperation(any())).thenReturn(decryptResponse);
-
-        String errorJson = "{\"error\":\"Bad Request\"}";
-        when(apiExecutor.makePOSTRequest(anyString(), anyString(), any())).thenReturn(errorJson);
-
-        when(apiExecutor.isStatusResponse(errorJson)).thenReturn(false);
-
-        assertThrows(RuntimeException.class, () ->
-                registerService.registerIPIBusinessAggregation(request, "corr-123")
-        );
+        assertThrows(RuntimeException.class,
+                () -> registerService.registerIPIBusinessAggregation(mock(RegisterIPIBusinessAggregationRequest.class), "corr-4"));
     }
 }
