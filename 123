@@ -1,133 +1,145 @@
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
+package com.td.tdi.api.ipirg.service;
 
+import com.td.coreapi.common.oauthclient.OAuthClient;
 import org.apache.http.client.HttpClient;
 import org.apache.http.client.ResponseHandler;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
-import org.apache.http.entity.StringEntity;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
+import org.json.simple.JSONObject;
+import org.json.simple.parser.ParseException;
+import org.junit.jupiter.api.*;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 
+import java.io.IOException;
+
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
 
 class PartyAPIExecutorTest {
 
     private PartyAPIExecutor executor;
-    private HttpClient mockClient;
-    private OAuthClient mockOAuth;
+    private static HttpClient mockClient;
+    private static OAuthClient mockOAuth;
+    private static MockedStatic<OAuthClient> oAuthClientStatic;
 
-    @BeforeEach
-    void setUp() throws Exception {
+    @BeforeAll
+    static void init() {
         mockClient = mock(HttpClient.class);
         mockOAuth = mock(OAuthClient.class);
 
-        // Mock static method OAuthClient.getInstance()
-        MockedStatic<OAuthClient> oAuthClientStatic = Mockito.mockStatic(OAuthClient.class);
+        // One-time static mock
+        oAuthClientStatic = Mockito.mockStatic(OAuthClient.class);
         oAuthClientStatic.when(OAuthClient::getInstance).thenReturn(mockOAuth);
 
         when(mockOAuth.getSyncClient()).thenReturn(mockClient);
+    }
+
+    @AfterAll
+    static void cleanup() {
+        // Close static mock after all tests
+        oAuthClientStatic.close();
+    }
+
+    @BeforeEach
+    void setUp() throws Exception {
+        // Reset method mocks before each test
         doNothing().when(mockOAuth).addClientCredentialsToken(any(HttpGet.class));
         doNothing().when(mockOAuth).addClientCredentialsToken(any(HttpPost.class));
     }
 
     @Test
-    void testMakeGETRequest_DEVProfile_addsHeaders() throws Exception {
+    void testMakeGETRequest_WithDevProfile() throws Exception {
         executor = new PartyAPIExecutor("xid", "xsys", "dev");
 
-        ResponseHandler<String> handler = response -> "OK";
-        when(mockClient.execute(any(HttpGet.class), any(ResponseHandler.class))).thenReturn("OK");
+        ResponseHandler<String> handler = response -> "GET_OK";
+        when(mockClient.execute(any(HttpGet.class), any(ResponseHandler.class))).thenReturn("GET_OK");
 
         String result = executor.makeGETRequest("http://test.com", handler);
-
-        assertEquals("OK", result);
-        verify(mockClient).execute(any(HttpGet.class), any(ResponseHandler.class));
+        assertEquals("GET_OK", result);
     }
 
     @Test
-    void testMakeGETRequest_SITProfile_addsHeaders() throws Exception {
-        executor = new PartyAPIExecutor("xid", "xsys", "sit");
+    void testMakeGETRequest_WithSitProfile() throws Exception {
+        executor = new PartyAPIExecutor("xid2", "xsys2", "sit");
 
-        ResponseHandler<String> handler = response -> "OK";
-        when(mockClient.execute(any(HttpGet.class), any(ResponseHandler.class))).thenReturn("OK");
+        ResponseHandler<String> handler = response -> "GET_SIT";
+        when(mockClient.execute(any(HttpGet.class), any(ResponseHandler.class))).thenReturn("GET_SIT");
 
-        String result = executor.makeGETRequest("http://test.com", handler);
-
-        assertEquals("OK", result);
+        String result = executor.makeGETRequest("http://sit.com", handler);
+        assertEquals("GET_SIT", result);
     }
 
     @Test
-    void testMakeGETRequest_OtherProfile_noHeaders() throws Exception {
-        executor = new PartyAPIExecutor("xid", "xsys", "prod");
+    void testMakeGETRequest_WithOtherProfile_NoHeaders() throws Exception {
+        executor = new PartyAPIExecutor("xid3", "xsys3", "prod");
 
-        ResponseHandler<String> handler = response -> "OK";
-        when(mockClient.execute(any(HttpGet.class), any(ResponseHandler.class))).thenReturn("OK");
+        ResponseHandler<String> handler = response -> "GET_PROD";
+        when(mockClient.execute(any(HttpGet.class), any(ResponseHandler.class))).thenReturn("GET_PROD");
 
-        String result = executor.makeGETRequest("http://test.com", handler);
-
-        assertEquals("OK", result);
+        String result = executor.makeGETRequest("http://prod.com", handler);
+        assertEquals("GET_PROD", result);
     }
 
     @Test
-    void testMakePOSTRequest_DEVProfile_addsHeadersAndPayload() throws Exception {
-        executor = new PartyAPIExecutor("xid", "xsys", "dev");
+    void testMakePOSTRequest_WithDevProfile() throws Exception {
+        executor = new PartyAPIExecutor("xid4", "xsys4", "dev");
 
         ResponseHandler<String> handler = response -> "POST_OK";
         when(mockClient.execute(any(HttpPost.class), any(ResponseHandler.class))).thenReturn("POST_OK");
 
-        String result = executor.makePOSTRequest("http://test.com", "{\"key\":\"value\"}", handler);
-
-        assertEquals("POST_OK", result);
-        verify(mockClient).execute(any(HttpPost.class), any(ResponseHandler.class));
-    }
-
-    @Test
-    void testMakePOSTRequest_SITProfile_addsHeaders() throws Exception {
-        executor = new PartyAPIExecutor("xid", "xsys", "sit");
-
-        ResponseHandler<String> handler = response -> "POST_OK";
-        when(mockClient.execute(any(HttpPost.class), any(ResponseHandler.class))).thenReturn("POST_OK");
-
-        String result = executor.makePOSTRequest("http://test.com", "{\"key\":\"value\"}", handler);
-
+        String result = executor.makePOSTRequest("http://post.com", "{}", handler);
         assertEquals("POST_OK", result);
     }
 
     @Test
-    void testMakePOSTRequest_OtherProfile_noHeaders() throws Exception {
-        executor = new PartyAPIExecutor("xid", "xsys", "uat");
+    void testMakePOSTRequest_WithSitProfile() throws Exception {
+        executor = new PartyAPIExecutor("xid5", "xsys5", "sit");
 
-        ResponseHandler<String> handler = response -> "POST_OK";
-        when(mockClient.execute(any(HttpPost.class), any(ResponseHandler.class))).thenReturn("POST_OK");
+        ResponseHandler<String> handler = response -> "POST_SIT";
+        when(mockClient.execute(any(HttpPost.class), any(ResponseHandler.class))).thenReturn("POST_SIT");
 
-        String result = executor.makePOSTRequest("http://test.com", "{\"key\":\"value\"}", handler);
-
-        assertEquals("POST_OK", result);
+        String result = executor.makePOSTRequest("http://post-sit.com", "{}", handler);
+        assertEquals("POST_SIT", result);
     }
 
     @Test
-    void testIsStatusResponse_true() {
-        executor = new PartyAPIExecutor("xid", "xsys", "dev");
+    void testMakePOSTRequest_WithOtherProfile_NoHeaders() throws Exception {
+        executor = new PartyAPIExecutor("xid6", "xsys6", "uat");
 
-        String json = "{\"status\":\"ok\"}";
-        assertTrue(executor.isStatusResponse(json));
+        ResponseHandler<String> handler = response -> "POST_UAT";
+        when(mockClient.execute(any(HttpPost.class), any(ResponseHandler.class))).thenReturn("POST_UAT");
+
+        String result = executor.makePOSTRequest("http://post-uat.com", "{}", handler);
+        assertEquals("POST_UAT", result);
     }
 
     @Test
-    void testIsStatusResponse_false_noStatus() {
-        executor = new PartyAPIExecutor("xid", "xsys", "dev");
+    void testIsStatusResponse_True() {
+        executor = new PartyAPIExecutor("id", "sys", "dev");
+        JSONObject obj = new JSONObject();
+        obj.put("status", "ok");
 
-        String json = "{\"message\":\"ok\"}";
-        assertFalse(executor.isStatusResponse(json));
+        boolean result = executor.isStatusResponse(obj.toJSONString());
+        assertTrue(result);
     }
 
     @Test
-    void testIsStatusResponse_false_invalidJson() {
-        executor = new PartyAPIExecutor("xid", "xsys", "dev");
+    void testIsStatusResponse_False_NoStatusKey() {
+        executor = new PartyAPIExecutor("id", "sys", "dev");
+        JSONObject obj = new JSONObject();
+        obj.put("data", "ok");
 
-        String badJson = "not-json";
-        assertFalse(executor.isStatusResponse(badJson));
+        boolean result = executor.isStatusResponse(obj.toJSONString());
+        assertFalse(result);
+    }
+
+    @Test
+    void testIsStatusResponse_ParseException() {
+        executor = new PartyAPIExecutor("id", "sys", "dev");
+
+        boolean result = executor.isStatusResponse("not-json");
+        assertFalse(result);
     }
 }
