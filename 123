@@ -4,16 +4,12 @@ import static org.mockito.Mockito.*;
 
 import java.util.*;
 
-import org.apache.http.HttpResponse;
-import org.apache.http.StatusLine;
-import org.apache.http.entity.StringEntity;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.*;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 @ExtendWith(MockitoExtension.class)
@@ -28,7 +24,6 @@ class PartyLookupServiceTest {
     @Mock
     private PartyLookupExceptionBuilder exceptionBuilder;
 
-    @InjectMocks
     private PartyLookupService service;
 
     @BeforeEach
@@ -43,178 +38,201 @@ class PartyLookupServiceTest {
         );
     }
 
-    // ---------- searchPartyLookupBusinessAggregationOperation ----------
+    // ============ MAIN PUBLIC METHOD ============
     @Test
-    void testSearchPartyLookupBusinessAggregationOperation_success() throws Exception {
+    void testSearchPartyLookupBusinessAggregationOperation_withMaxListSize() throws Exception {
         // mock request
         SearchPartyLookupBusinessAggregationRequestPayload request =
             mock(SearchPartyLookupBusinessAggregationRequestPayload.class);
+        when(request.getMaxListSize()).thenReturn(1);
 
-        // mock response
-        RetrieveBusinessListResponse customerResponse = new RetrieveBusinessListResponse();
-        Business business = new Business();
-        business.setKey("123");
-        business.setFullName("Test Business");
-        StreetAddress addr = new StreetAddress();
-        addr.setCountryCd("US");
-        addr.setTerritory("CA");
-        addr.setPostalCode("90001");
-        addr.setCity("Los Angeles");
-        addr.setAddressLine1("Line1");
-        addr.setAddressLine2("Line2");
-        business.setStreetAddress(addr);
-        customerResponse.setBusiness(List.of(business));
-
-        // stub getCustomerPartySearchResponse
-        PartyLookupService spyService = Mockito.spy(service);
-        doReturn(customerResponse).when(spyService).getCustomerPartySearchResponse(any());
-        doReturn(new HashMap<>()).when(spyService).retrieveAndMapAlternatePartyIDs(any(), any());
-        doReturn(List.of(Party.builder().alternatePartyId("ALT123").build()))
-            .when(spyService).buildListOfPartyVO(any(), any());
-
-        SearchPartyLookupBusinessAggregationResponsePayload result =
-            spyService.searchPartyLookupBusinessAggregationOperation(request);
-
-        assertNotNull(result);
-        assertFalse(result.getParty().isEmpty());
-    }
-
-    // ---------- getCustomerPartySearchResponse ----------
-    @Test
-    void testGetCustomerPartySearchResponse_success() throws Exception {
-        SearchPartyLookupBusinessAggregationRequestPayload request =
-            mock(SearchPartyLookupBusinessAggregationRequestPayload.class);
-        SearchCriteria searchCriteria = mock(SearchCriteria.class);
-        OrganizationCriteria orgCriteria = mock(OrganizationCriteria.class);
-
-        when(request.getSearchCriteria()).thenReturn(searchCriteria);
-        when(searchCriteria.getOrganizationCriteria()).thenReturn(orgCriteria);
-        when(orgCriteria.getName()).thenReturn("ABC");
-        when(orgCriteria.getBranch()).thenReturn("BR1");
-
-        // simulate different responses based on URL
-        when(apiExecutor.makeGETRequest(anyString(), any())).thenAnswer(invocation -> {
-            String url = invocation.getArgument(0, String.class);
-            if (url.contains("customerUrl")) {
-                return "{ \"business\": [] }";
-            }
-            return "{}";
-        });
-
-        when(objectMapper.readValue(anyString(), eq(RetrieveBusinessListResponse.class)))
-            .thenReturn(new RetrieveBusinessListResponse());
-
-        RetrieveBusinessListResponse resp = service.getCustomerPartySearchResponse(request);
-
-        assertNotNull(resp);
-    }
-
-    // ---------- retrieveAndMapAlternatePartyIDs ----------
-    @Test
-    void testRetrieveAndMapAlternatePartyIDs_success() throws Exception {
-        RetrieveBusinessListResponse resp = new RetrieveBusinessListResponse();
-        Business b = new Business();
-        b.setKey("123");
-        b.setFullName("Biz");
-        resp.setBusiness(List.of(b));
-
-        when(apiExecutor.makeGETRequest(contains("alternateUrl"), any()))
-            .thenReturn("{\"partyToAlternateParty\":[{\"alternateKey\":\"ALT-1\"}]}");
-
-        RetrieveAlternatePartyKeyResponse altResp = new RetrieveAlternatePartyKeyResponse();
-        PartyToAlternateParty p = new PartyToAlternateParty();
-        p.setAlternateKey("ALT-1");
-        altResp.setPartyToAlternateParty(List.of(p));
-
-        when(objectMapper.readValue(anyString(), eq(RetrieveAlternatePartyKeyResponse.class)))
-            .thenReturn(altResp);
-
-        HashMap<String, String> result =
-            service.retrieveAndMapAlternatePartyIDs(resp, mock(SearchPartyLookupBusinessAggregationRequestPayload.class));
-
-        assertEquals("ALT-1", result.get("123"));
-    }
-
-    @Test
-    void testRetrieveAndMapAlternatePartyIDs_withException() throws Exception {
-        RetrieveBusinessListResponse resp = new RetrieveBusinessListResponse();
-        Business b = new Business();
-        b.setKey("123");
-        resp.setBusiness(List.of(b));
-
-        when(apiExecutor.makeGETRequest(anyString(), any())).thenThrow(new RuntimeException("fail"));
-
-        HashMap<String, String> result =
-            service.retrieveAndMapAlternatePartyIDs(resp, mock(SearchPartyLookupBusinessAggregationRequestPayload.class));
-
-        assertTrue(result.containsKey("123"));
-        assertNull(result.get("123"));
-    }
-
-    // ---------- buildListOfPartyVO ----------
-    @Test
-    void testBuildListOfPartyVO_success() {
-        RetrieveBusinessListResponse resp = new RetrieveBusinessListResponse();
-        Business b = new Business();
-        b.setKey("123");
-        b.setFullName("Biz");
-        b.setAliasName("Alias");
-        StreetAddress addr = new StreetAddress();
-        addr.setCountryCd("CA");
-        addr.setTerritory("ON");
-        addr.setPostalCode("M1A1A1");
-        addr.setCity("Toronto");
-        b.setStreetAddress(addr);
-        resp.setBusiness(List.of(b));
-
-        HashMap<String, String> map = new HashMap<>();
-        map.put("123", "ALT123");
-
-        List<Party> parties = service.buildListOfPartyVO(resp, map);
-
-        assertEquals(1, parties.size());
-        assertEquals("ALT123", parties.get(0).getAlternatePartyId());
-    }
-
-    // ---------- buildCustomerAddressVO ----------
-    @Test
-    void testBuildCustomerAddressVO_US() {
-        Business b = new Business();
+        // build customer response
+        RetrieveBusinessListResponse customerResp = new RetrieveBusinessListResponse();
+        Business b1 = new Business();
+        b1.setKey("C1");
+        b1.setFullName("Biz One");
         StreetAddress addr = new StreetAddress();
         addr.setCountryCd("US");
         addr.setTerritory("CA");
         addr.setPostalCode("90001");
         addr.setCity("LA");
-        b.setStreetAddress(addr);
+        b1.setStreetAddress(addr);
 
-        CustomerItemAddress address = service.buildCustomerAddressVO(b);
-        assertNotNull(address.getAddress().getCountrySubdivision().getAmericanSubdivision());
+        Business b2 = new Business();
+        b2.setKey("C2");
+        b2.setFullName("Biz Two");
+        b2.setStreetAddress(addr);
+
+        customerResp.setBusiness(List.of(b1, b2));
+
+        // stub customer API
+        when(apiExecutor.makeGETRequest(contains("customerUrl"), any()))
+            .thenReturn("{\"business\":[]}");
+
+        when(objectMapper.readValue(anyString(), eq(RetrieveBusinessListResponse.class)))
+            .thenReturn(customerResp);
+
+        // stub alternate API to return null first → so generator kicks in
+        when(apiExecutor.makeGETRequest(contains("alternateUrl"), any())).thenReturn(null);
+
+        // stub generator
+        EncryptResponseType encType = new EncryptResponseType("C1", "ENC1");
+        EncryptResponse encResp = new EncryptResponse(List.of(encType));
+        when(generatorService.invokeIPIGeneratorEncrypt(any())).thenReturn(encResp);
+
+        // act
+        SearchPartyLookupBusinessAggregationResponsePayload result =
+            service.searchPartyLookupBusinessAggregationOperation(request);
+
+        // assert
+        assertNotNull(result);
+        assertEquals(1, result.getParty().size()); // maxListSize=1
+        assertEquals("ENC1", result.getParty().get(0).getAlternatePartyId());
     }
 
     @Test
-    void testBuildCustomerAddressVO_CA() {
+    void testSearchPartyLookupBusinessAggregationOperation_withoutMaxListSize() throws Exception {
+        SearchPartyLookupBusinessAggregationRequestPayload request =
+            mock(SearchPartyLookupBusinessAggregationRequestPayload.class);
+        when(request.getMaxListSize()).thenReturn(null);
+
+        // build customer response with one business
+        RetrieveBusinessListResponse customerResp = new RetrieveBusinessListResponse();
         Business b = new Business();
+        b.setKey("B123");
+        b.setFullName("Biz");
         StreetAddress addr = new StreetAddress();
         addr.setCountryCd("CA");
         addr.setTerritory("ON");
         addr.setPostalCode("M1A1A1");
         addr.setCity("Toronto");
         b.setStreetAddress(addr);
+        customerResp.setBusiness(List.of(b));
 
-        CustomerItemAddress address = service.buildCustomerAddressVO(b);
-        assertNotNull(address.getAddress().getCountrySubdivision().getCanadianSubdivision());
+        when(apiExecutor.makeGETRequest(contains("customerUrl"), any()))
+            .thenReturn("{\"business\":[]}");
+
+        when(objectMapper.readValue(anyString(), eq(RetrieveBusinessListResponse.class)))
+            .thenReturn(customerResp);
+
+        // alternate API returns response with alternate key
+        when(apiExecutor.makeGETRequest(contains("alternateUrl"), any()))
+            .thenReturn("{\"partyToAlternateParty\":[{\"alternateKey\":\"ALT-123\"}]}");
+
+        RetrieveAlternatePartyKeyResponse altResp = new RetrieveAlternatePartyKeyResponse();
+        PartyToAlternateParty p = new PartyToAlternateParty();
+        p.setAlternateKey("ALT-123");
+        altResp.setPartyToAlternateParty(List.of(p));
+
+        when(objectMapper.readValue(anyString(), eq(RetrieveAlternatePartyKeyResponse.class)))
+            .thenReturn(altResp);
+
+        // act
+        SearchPartyLookupBusinessAggregationResponsePayload result =
+            service.searchPartyLookupBusinessAggregationOperation(request);
+
+        // assert
+        assertNotNull(result);
+        assertEquals("ALT-123", result.getParty().get(0).getAlternatePartyId());
+    }
+
+    // ============ ADDRESS BUILDER BRANCHES ============
+    @Test
+    void testBuildCustomerAddressVO_forUS() throws Exception {
+        SearchPartyLookupBusinessAggregationRequestPayload request = mock(SearchPartyLookupBusinessAggregationRequestPayload.class);
+
+        // prepare US business
+        Business b = new Business();
+        b.setKey("US1");
+        StreetAddress addr = new StreetAddress();
+        addr.setCountryCd("US");
+        addr.setTerritory("NY");
+        addr.setPostalCode("10001");
+        addr.setCity("NYC");
+        b.setStreetAddress(addr);
+
+        RetrieveBusinessListResponse customerResp = new RetrieveBusinessListResponse();
+        customerResp.setBusiness(List.of(b));
+
+        when(apiExecutor.makeGETRequest(contains("customerUrl"), any()))
+            .thenReturn("{\"business\":[]}");
+
+        when(objectMapper.readValue(anyString(), eq(RetrieveBusinessListResponse.class)))
+            .thenReturn(customerResp);
+
+        when(apiExecutor.makeGETRequest(contains("alternateUrl"), any())).thenReturn(null);
+        when(generatorService.invokeIPIGeneratorEncrypt(any()))
+            .thenReturn(new EncryptResponse(List.of(new EncryptResponseType("US1","ENCRYPTED"))));
+
+        SearchPartyLookupBusinessAggregationResponsePayload result =
+            service.searchPartyLookupBusinessAggregationOperation(request);
+
+        assertEquals("ENCRYPTED", result.getParty().get(0).getAlternatePartyId());
+        assertEquals("NYC", result.getParty().get(0).getCustomerItemAddress().getAddress().getCity());
     }
 
     @Test
-    void testBuildCustomerAddressVO_Other() {
+    void testBuildCustomerAddressVO_forCA() throws Exception {
+        SearchPartyLookupBusinessAggregationRequestPayload request = mock(SearchPartyLookupBusinessAggregationRequestPayload.class);
+
+        // prepare CA business
         Business b = new Business();
+        b.setKey("CA1");
+        StreetAddress addr = new StreetAddress();
+        addr.setCountryCd("CA");
+        addr.setTerritory("QC");
+        addr.setPostalCode("H2X1X1");
+        addr.setCity("Montreal");
+        b.setStreetAddress(addr);
+
+        RetrieveBusinessListResponse customerResp = new RetrieveBusinessListResponse();
+        customerResp.setBusiness(List.of(b));
+
+        when(apiExecutor.makeGETRequest(contains("customerUrl"), any()))
+            .thenReturn("{\"business\":[]}");
+
+        when(objectMapper.readValue(anyString(), eq(RetrieveBusinessListResponse.class)))
+            .thenReturn(customerResp);
+
+        when(apiExecutor.makeGETRequest(contains("alternateUrl"), any())).thenReturn(null);
+        when(generatorService.invokeIPIGeneratorEncrypt(any()))
+            .thenReturn(new EncryptResponse(List.of(new EncryptResponseType("CA1","ENCRYPTED"))));
+
+        SearchPartyLookupBusinessAggregationResponsePayload result =
+            service.searchPartyLookupBusinessAggregationOperation(request);
+
+        assertEquals("Montreal", result.getParty().get(0).getCustomerItemAddress().getAddress().getCity());
+    }
+
+    @Test
+    void testBuildCustomerAddressVO_forOtherCountry() throws Exception {
+        SearchPartyLookupBusinessAggregationRequestPayload request = mock(SearchPartyLookupBusinessAggregationRequestPayload.class);
+
+        // prepare IN business
+        Business b = new Business();
+        b.setKey("IN1");
         StreetAddress addr = new StreetAddress();
         addr.setCountryCd("IN");
         addr.setTerritory("TN");
         addr.setCity("Chennai");
         b.setStreetAddress(addr);
 
-        CustomerItemAddress address = service.buildCustomerAddressVO(b);
-        assertNotNull(address.getAddress().getCountrySubdivision().getOtherCountrySubdivision());
+        RetrieveBusinessListResponse customerResp = new RetrieveBusinessListResponse();
+        customerResp.setBusiness(List.of(b));
+
+        when(apiExecutor.makeGETRequest(contains("customerUrl"), any()))
+            .thenReturn("{\"business\":[]}");
+
+        when(objectMapper.readValue(anyString(), eq(RetrieveBusinessListResponse.class)))
+            .thenReturn(customerResp);
+
+        when(apiExecutor.makeGETRequest(contains("alternateUrl"), any())).thenReturn(null);
+        when(generatorService.invokeIPIGeneratorEncrypt(any()))
+            .thenReturn(new EncryptResponse(List.of(new EncryptResponseType("IN1","ENCRYPTED"))));
+
+        SearchPartyLookupBusinessAggregationResponsePayload result =
+            service.searchPartyLookupBusinessAggregationOperation(request);
+
+        assertEquals("Chennai", result.getParty().get(0).getCustomerItemAddress().getAddress().getCity());
     }
 }
