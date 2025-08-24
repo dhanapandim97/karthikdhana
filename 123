@@ -1,69 +1,253 @@
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
-
-import java.util.List;
-
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-class GeneratorServiceTest {
+import java.util.*;
+import java.util.Calendar;
+import java.util.stream.Collectors;
 
-    private Series series;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import org.apache.http.HttpEntity;
+import org.apache.http.StatusLine;
+import org.apache.http.client.methods.CloseableHttpResponse;
+import org.apache.http.util.EntityUtils;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mockito.*;
+
+class PartyLookupServiceTest {
+
+    @Mock
+    private PartyLookupExceptionBuilder exceptionBuilder;
+
+    @Mock
+    private PartyAPIExecutor apiExecutor;
+
+    @Mock
     private GeneratorService generatorService;
+
+    @Mock
+    private ObjectMapper objectMapper;
+
+    @InjectMocks
+    private PartyLookupService service;
+
+    private String customerServiceUrl = "http://customerService/";
+    private String alternatePartyServiceUrl = "http://alternateService/";
 
     @BeforeEach
     void setUp() {
-        series = mock(Series.class);
-        generatorService = new GeneratorService(series);
+        MockitoAnnotations.openMocks(this);
+        service = new PartyLookupService(
+                customerServiceUrl,
+                alternatePartyServiceUrl,
+                exceptionBuilder,
+                apiExecutor,
+                generatorService,
+                objectMapper
+        );
     }
 
+    // --------------------- Normal Flow ---------------------
     @Test
-    void testInvokeIPIGeneratorEncrypt_success() throws Exception {
-        // Mock request with one item
-        EncryptRequest.Item item = new EncryptRequest.Item("seed123", "2025-08-24", "SERIES1");
-        EncryptRequest request = new EncryptRequest(List.of(item));
+    void testNormalFlow_allAlternateIdsPresent() throws Exception {
+        var request = createRequest(3, "US");
+        var customerResp = createCustomerResponse();
 
-        // Mock series behavior
-        when(series.getEncryptVal("SERIES1", "seed123")).thenReturn("ENCRYPTED");
+        // Mock customer API response
+        when(apiExecutor.makeGETRequest(anyString(), any())).thenAnswer(invocation -> {
+            var handler = invocation.getArgument(1);
+            return handler.apply(mockHttpResponse(200, "{}"));
+        });
+        when(objectMapper.readValue(anyString(), eq(RetrieveBusinessListResponse.class)))
+                .thenReturn(customerResp);
 
-        EncryptResponse response = generatorService.invokeIPIGeneratorEncrypt(request);
+        // Mock alternate party API - all present
+        for (Business b : customerResp.getBusiness()) {
+            String altKey = "alt_" + b.getKey();
+            when(apiExecutor.makeGETRequest(contains(b.getKey()), any())).thenReturn("{\"partyToAlternateParty\":[{\"alternateKey\":\"" + altKey + "\"}]}");
+            when(objectMapper.readValue(contains(altKey), eq(RetrieveAlternatePartyKeyResponse.class)))
+                    .thenReturn(new RetrieveAlternatePartyKeyResponse(List.of(new PartyKeyMapping(altKey))));
+        }
 
+        // No encryption needed
+        EncryptResponse encryptResponse = new EncryptResponse(Collections.emptyList());
+        when(generatorService.invokeIPIGeneratorEncrypt(any())).thenReturn(encryptResponse);
+
+        var response = service.searchPartyLookupBusinessAggregationOperation(request);
         assertNotNull(response);
-        assertEquals(1, response.responses().size());
-        assertEquals("ENCRYPTED", response.responses().get(0).encryptedVal());
-
-        verify(series, times(1)).getEncryptVal("SERIES1", "seed123");
+        assertEquals(3, response.getParty().size());
+        assertEquals("alt_key1", response.getParty().get(0).getAlternatePartyId());
     }
 
+    // --------------------- Partial Encryption Flow ---------------------
     @Test
-    void testEncryptIPIGeneratorOperation_withException() throws Exception {
-        EncryptRequest.Item item = new EncryptRequest.Item("seedX", "2025-08-24", "SERIESX");
-        EncryptRequest request = new EncryptRequest(List.of(item));
+    void testEncryptionFlow_someAlternateIdsNull() throws Exception {
+        var request = createRequest(2, "US");
+        var customerResp = createCustomerResponse();
 
-        // Force exception from series
-        when(series.getEncryptVal("SERIESX", "seedX")).thenThrow(new GeneratorException("Failed"));
+        when(apiExecutor.makeGETRequest(anyString(), any())).thenAnswer(invocation -> {
+            var handler = invocation.getArgument(1);
+            return handler.apply(mockHttpResponse(200, "{}"));
+        });
+        when(objectMapper.readValue(anyString(), eq(RetrieveBusinessListResponse.class)))
+                .thenReturn(customerResp);
 
-        List<EncryptResponseType> result = generatorService.encryptIPIGeneratorOperation(request);
+        // Alternate party API returns null for one party
+        when(apiExecutor.makeGETRequest(contains("key1"), any())).thenReturn(null);
+        when(apiExecutor.makeGETRequest(contains("key2"), any())).thenReturn("{\"partyToAlternateParty\":[{\"alternateKey\":\"alt_key2\"}]}");
+        when(objectMapper.readValue(contains("alt_key2"), eq(RetrieveAlternatePartyKeyResponse.class)))
+                .thenReturn(new RetrieveAlternatePartyKeyResponse(List.of(new PartyKeyMapping("alt_key2"))));
 
-        assertEquals(1, result.size());
-        assertNull(result.get(0)); // because catch returns null
-    }
+        // Encryption response for missing party
+        EncryptResponseType encryptRespType = new EncryptResponseType("key1", "enc_key1");
+        EncryptResponse encryptResp = new EncryptResponse(List.of(encryptRespType));
+        when(generatorService.invokeIPIGeneratorEncrypt(any())).thenReturn(encryptResp);
 
-    @Test
-    void testDecryptIPIGeneratorOperation_success() throws Exception {
-        DecryptRequest request = new DecryptRequest("encryptedVal");
-
-        // Mock return from series
-        DecryptVo mockVo = new DecryptVo("CIF123", "PERM_IPI");
-        when(series.getDecryptval("encryptedVal")).thenReturn(mockVo);
-
-        DecryptResponse response = generatorService.decryptIPIGeneratorOperation(request);
-
+        var response = service.searchPartyLookupBusinessAggregationOperation(request);
         assertNotNull(response);
-        assertEquals("CIF123", response.customerNumberCIF());
-        assertEquals("PERM_IPI", response.permanentIPI());
+        assertEquals("enc_key1", response.getParty().get(0).getAlternatePartyId());
+        assertEquals("alt_key2", response.getParty().get(1).getAlternatePartyId());
+    }
 
-        verify(series, times(1)).getDecryptval("encryptedVal");
+    // --------------------- Exception Handling ---------------------
+    @Test
+    void testCustomerApiFailure_throwsException() throws Exception {
+        var request = createRequest(1, "US");
+
+        when(apiExecutor.makeGETRequest(anyString(), any())).thenAnswer(invocation -> {
+            var handler = invocation.getArgument(1);
+            return handler.apply(mockHttpResponse(500, "Error"));
+        });
+
+        assertThrows(RuntimeException.class, () -> service.searchPartyLookupBusinessAggregationOperation(request));
+    }
+
+    @Test
+    void testAlternatePartyJsonProcessingException_loggedButContinues() throws Exception {
+        var request = createRequest(1, "US");
+        var customerResp = createCustomerResponse();
+
+        when(apiExecutor.makeGETRequest(anyString(), any())).thenAnswer(invocation -> {
+            var handler = invocation.getArgument(1);
+            return handler.apply(mockHttpResponse(200, "{}"));
+        });
+        when(objectMapper.readValue(anyString(), eq(RetrieveBusinessListResponse.class)))
+                .thenReturn(customerResp);
+
+        // Alternate party API returns invalid JSON
+        when(apiExecutor.makeGETRequest(contains("key1"), any())).thenReturn("INVALID_JSON");
+        when(objectMapper.readValue(contains("INVALID_JSON"), eq(RetrieveAlternatePartyKeyResponse.class)))
+                .thenThrow(JsonProcessingException.class);
+
+        // Encryption response
+        EncryptResponse encryptResp = new EncryptResponse(Collections.emptyList());
+        when(generatorService.invokeIPIGeneratorEncrypt(any())).thenReturn(encryptResp);
+
+        var response = service.searchPartyLookupBusinessAggregationOperation(request);
+        assertNotNull(response);
+        // If alternate ID failed, null is returned
+        assertNull(response.getParty().get(0).getAlternatePartyId());
+    }
+
+    // --------------------- Different Country Codes ---------------------
+    @Test
+    void testBuildCustomerAddressVO_countryCodes() throws Exception {
+        var request = createRequest(3, "US");
+        var customerResp = createCustomerResponse();
+        customerResp.getBusiness().get(1).getStreetAddress().setCountryCd("CA");
+        customerResp.getBusiness().get(2).getStreetAddress().setCountryCd("IN");
+
+        when(apiExecutor.makeGETRequest(anyString(), any())).thenAnswer(invocation -> {
+            var handler = invocation.getArgument(1);
+            return handler.apply(mockHttpResponse(200, "{}"));
+        });
+        when(objectMapper.readValue(anyString(), eq(RetrieveBusinessListResponse.class)))
+                .thenReturn(customerResp);
+
+        for (Business b : customerResp.getBusiness()) {
+            when(apiExecutor.makeGETRequest(contains(b.getKey()), any())).thenReturn("{\"partyToAlternateParty\":[{\"alternateKey\":\"alt_" + b.getKey() + "\"}]}");
+            when(objectMapper.readValue(contains("alt_" + b.getKey()), eq(RetrieveAlternatePartyKeyResponse.class)))
+                    .thenReturn(new RetrieveAlternatePartyKeyResponse(List.of(new PartyKeyMapping("alt_" + b.getKey()))));
+        }
+
+        EncryptResponse encryptResp = new EncryptResponse(Collections.emptyList());
+        when(generatorService.invokeIPIGeneratorEncrypt(any())).thenReturn(encryptResp);
+
+        var response = service.searchPartyLookupBusinessAggregationOperation(request);
+        assertNotNull(response);
+        assertEquals(3, response.getParty().size());
+    }
+
+    // --------------------- Helpers ---------------------
+    private SearchPartyLookupBusinessAggregationRequestPayload createRequest(int maxListSize, String countryCode) {
+        SearchPartyLookupBusinessAggregationRequestPayload request = new SearchPartyLookupBusinessAggregationRequestPayload();
+        request.setMaxListSize(maxListSize);
+        OrganizationCriteria orgCriteria = new OrganizationCriteria();
+        orgCriteria.setName("TestName");
+        request.setSearchCriteria(new SearchCriteria(orgCriteria));
+        return request;
+    }
+
+    private RetrieveBusinessListResponse createCustomerResponse() {
+        RetrieveBusinessListResponse resp = new RetrieveBusinessListResponse();
+        resp.setBusiness(List.of(
+                new Business("key1", "FullName1", "Alias1", createStreetAddress("US", "NY", "10001")),
+                new Business("key2", "FullName2", "Alias2", createStreetAddress("CA", "ON", "M5V1E6")),
+                new Business("key3", "FullName3", "Alias3", createStreetAddress("IN", "TN", "600001"))
+        ));
+        return resp;
+    }
+
+    private StreetAddress createStreetAddress(String country, String territory, String postalCode) {
+        StreetAddress addr = new StreetAddress();
+        addr.setCountryCd(country);
+        addr.setTerritory(territory);
+        addr.setPostalCode(postalCode);
+        addr.setAddressLine1("Line1");
+        addr.setAddressLine2("Line2");
+        addr.setAddressLine3("Line3");
+        addr.setCity("City");
+        return addr;
+    }
+
+    private CloseableHttpResponse mockHttpResponse(int status, String body) throws Exception {
+        CloseableHttpResponse resp = mock(CloseableHttpResponse.class);
+        StatusLine statusLine = mock(StatusLine.class);
+        when(statusLine.getStatusCode()).thenReturn(status);
+        when(resp.getStatusLine()).thenReturn(statusLine);
+
+        HttpEntity entity = mock(HttpEntity.class);
+        when(entity.getContent()).thenReturn(new java.io.ByteArrayInputStream(body.getBytes()));
+        when(resp.getEntity()).thenReturn(entity);
+
+        return resp;
+    }
+
+    // Dummy classes
+    static class PartyKeyMapping {
+        private String alternateKey;
+        public PartyKeyMapping(String key) { this.alternateKey = key; }
+        public String getAlternateKey() { return alternateKey; }
+    }
+    static class RetrieveAlternatePartyKeyResponse {
+        private List<PartyKeyMapping> partyToAlternateParty;
+        public RetrieveAlternatePartyKeyResponse(List<PartyKeyMapping> list) { this.partyToAlternateParty = list; }
+        public List<PartyKeyMapping> getPartyToAlternateParty() { return partyToAlternateParty; }
+    }
+    static class EncryptResponseType {
+        private String seedValue;
+        private String encryptedValue;
+        public EncryptResponseType(String seedValue, String encryptedValue) {
+            this.seedValue = seedValue; this.encryptedValue = encryptedValue;
+        }
+        public String seedValue() { return seedValue; }
+        public String encryptedValue() { return encryptedValue; }
+    }
+    static class EncryptResponse {
+        private List<EncryptResponseType> response;
+        public EncryptResponse(List<EncryptResponseType> response) { this.response = response; }
+        public List<EncryptResponseType> response() { return response; }
     }
 }
