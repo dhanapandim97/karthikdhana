@@ -1,155 +1,100 @@
 @Test
-void testCustomerPartySearchResponse_success200() throws Exception {
+void testSearchPartyLookupBusinessAggregationOperation_customerService_success() throws Exception {
+    // given
+    SearchPartyLookupBusinessAggregationRequestPayload payload = new SearchPartyLookupBusinessAggregationRequestPayload();
+
     HttpResponse resp = mock(HttpResponse.class);
     StatusLine statusLine = mock(StatusLine.class);
-    HttpEntity entity = new StringEntity("{\"ok\":true}");
-
-    when(resp.getStatusLine()).thenReturn(statusLine);
     when(statusLine.getStatusCode()).thenReturn(200);
-    when(resp.getEntity()).thenReturn(entity);
-
-    when(apiExecutor.makeGETRequest(anyString(), any())).thenAnswer(invocation -> {
-        Function<HttpResponse, String> fn = invocation.getArgument(1);
-        return fn.apply(resp); // triggers lambda
-    });
-
-    String result = serviceUnderTest.getCustomerPartySearchResponse("test");
-    assertTrue(result.contains("ok"));
-}
-
-@Test
-void testCustomerPartySearchResponse_nullEntity_throwsPartyLookupException() throws Exception {
-    HttpResponse resp = mock(HttpResponse.class);
-    StatusLine statusLine = mock(StatusLine.class);
-
     when(resp.getStatusLine()).thenReturn(statusLine);
-    when(statusLine.getStatusCode()).thenReturn(500);
-    when(resp.getEntity()).thenReturn(null);
+    when(resp.getEntity()).thenReturn(new StringEntity("{\"ok\":\"yes\"}", StandardCharsets.UTF_8));
 
-    when(apiExecutor.makeGETRequest(anyString(), any())).thenAnswer(invocation -> {
-        Function<HttpResponse, String> fn = invocation.getArgument(1);
-        return fn.apply(resp); // triggers lambda branch
-    });
-
-    assertThrows(PartyLookupException.class,
-        () -> serviceUnderTest.getCustomerPartySearchResponse("test"));
-}
-
-@Test
-void testCustomerPartySearchResponse_warning_throwsPartyLookupException() throws Exception {
-    HttpResponse resp = mock(HttpResponse.class);
-    StatusLine statusLine = mock(StatusLine.class);
-    HttpEntity entity = new StringEntity("{\"warning\":true}");
-
-    when(resp.getStatusLine()).thenReturn(statusLine);
-    when(statusLine.getStatusCode()).thenReturn(500);
-    when(resp.getEntity()).thenReturn(entity);
-
-    when(apiExecutor.isStatusResponse(any())).thenReturn(true);
-    when(objectMapper.readValue(anyString(), eq(Warning.class))).thenReturn(new Warning());
-
-    when(partyLookupExceptionBuilder.createPartyLookupException(any()))
-        .thenReturn(new PartyLookupException("warn"));
-
-    when(apiExecutor.makeGETRequest(anyString(), any())).thenAnswer(invocation -> {
-        Function<HttpResponse, String> fn = invocation.getArgument(1);
+    when(apiExecutor.makeGETRequest(contains("customerService"), any())).thenAnswer(inv -> {
+        Function<HttpResponse, String> fn = inv.getArgument(1);
         return fn.apply(resp);
     });
 
-    assertThrows(PartyLookupException.class,
-        () -> serviceUnderTest.getCustomerPartySearchResponse("test"));
+    SearchPartyLookupBusinessAggregationResponse expected = new SearchPartyLookupBusinessAggregationResponse();
+    when(objectMapper.readValue(anyString(), eq(SearchPartyLookupBusinessAggregationResponse.class)))
+            .thenReturn(expected);
+
+    // when
+    SearchPartyLookupBusinessAggregationResponse actual =
+            partyLookupService.searchPartyLookupBusinessAggregationOperation(payload);
+
+    // then
+    assertSame(expected, actual);
 }
 
 @Test
-void testCustomerPartySearchResponse_non200WithEntity_throwsRuntimeException() throws Exception {
+void testSearchPartyLookupBusinessAggregationOperation_alternateService_success() throws Exception {
+    // given
+    SearchPartyLookupBusinessAggregationRequestPayload payload = new SearchPartyLookupBusinessAggregationRequestPayload();
+
     HttpResponse resp = mock(HttpResponse.class);
     StatusLine statusLine = mock(StatusLine.class);
-    HttpEntity entity = new StringEntity("bad response");
-
+    when(statusLine.getStatusCode()).thenReturn(200);
     when(resp.getStatusLine()).thenReturn(statusLine);
-    when(statusLine.getStatusCode()).thenReturn(500);
-    when(resp.getEntity()).thenReturn(entity);
+    when(resp.getEntity()).thenReturn(new StringEntity("{\"alt\":\"yes\"}", StandardCharsets.UTF_8));
 
-    when(apiExecutor.makeGETRequest(anyString(), any())).thenAnswer(invocation -> {
-        Function<HttpResponse, String> fn = invocation.getArgument(1);
+    when(apiExecutor.makeGETRequest(contains("alternateService"), any())).thenAnswer(inv -> {
+        Function<HttpResponse, String> fn = inv.getArgument(1);
         return fn.apply(resp);
     });
 
+    SearchPartyLookupBusinessAggregationResponse expected = new SearchPartyLookupBusinessAggregationResponse();
+    when(objectMapper.readValue(anyString(), eq(SearchPartyLookupBusinessAggregationResponse.class)))
+            .thenReturn(expected);
+
+    // when
+    SearchPartyLookupBusinessAggregationResponse actual =
+            partyLookupService.searchPartyLookupBusinessAggregationOperation(payload);
+
+    // then
+    assertSame(expected, actual);
+}
+
+@Test
+void testSearchPartyLookupBusinessAggregationOperation_customerService_jsonProcessingException() throws Exception {
+    // given
+    SearchPartyLookupBusinessAggregationRequestPayload payload = new SearchPartyLookupBusinessAggregationRequestPayload();
+
+    HttpResponse resp = mock(HttpResponse.class);
+    StatusLine statusLine = mock(StatusLine.class);
+    when(statusLine.getStatusCode()).thenReturn(200);
+    when(resp.getStatusLine()).thenReturn(statusLine);
+    when(resp.getEntity()).thenReturn(new StringEntity("{\"bad\":\"json\"}", StandardCharsets.UTF_8));
+
+    when(apiExecutor.makeGETRequest(contains("customerService"), any())).thenAnswer(inv -> {
+        Function<HttpResponse, String> fn = inv.getArgument(1);
+        return fn.apply(resp);
+    });
+
+    when(objectMapper.readValue(anyString(), eq(SearchPartyLookupBusinessAggregationResponse.class)))
+            .thenThrow(new JsonProcessingException("boom"){});
+
+    // when / then
     assertThrows(RuntimeException.class,
-        () -> serviceUnderTest.getCustomerPartySearchResponse("test"));
-}
-
-
-@Test
-void testRetrieveAndMapAlternatePartyIDs_success200() throws Exception {
-    PartyVO party = new PartyVO();
-    party.setKey("P001");
-    party.setFullName("John");
-
-    HttpResponse resp = mock(HttpResponse.class);
-    StatusLine statusLine = mock(StatusLine.class);
-    HttpEntity entity = new StringEntity("{\"altKey\":\"X123\"}");
-
-    when(resp.getStatusLine()).thenReturn(statusLine);
-    when(statusLine.getStatusCode()).thenReturn(200);
-    when(resp.getEntity()).thenReturn(entity);
-
-    when(apiExecutor.makeGETRequest(anyString(), any())).thenAnswer(invocation -> {
-        Function<HttpResponse, String> fn = invocation.getArgument(1);
-        return fn.apply(resp);
-    });
-
-    when(objectMapper.readValue(anyString(), eq(AlternatePartyKeyResponse.class)))
-        .thenReturn(new AlternatePartyKeyResponse());
-
-    serviceUnderTest.retrieveAndMapAlternatePartyIDs(party);
-    // no exception = covered success branch
+            () -> partyLookupService.searchPartyLookupBusinessAggregationOperation(payload));
 }
 
 @Test
-void testRetrieveAndMapAlternatePartyIDs_non200ReturnsNull() throws Exception {
-    PartyVO party = new PartyVO();
-    party.setKey("P001");
-    party.setFullName("John");
+void testSearchPartyLookupBusinessAggregationOperation_alternateService_statusNot200() throws Exception {
+    // given
+    SearchPartyLookupBusinessAggregationRequestPayload payload = new SearchPartyLookupBusinessAggregationRequestPayload();
 
     HttpResponse resp = mock(HttpResponse.class);
     StatusLine statusLine = mock(StatusLine.class);
-
-    when(resp.getStatusLine()).thenReturn(statusLine);
     when(statusLine.getStatusCode()).thenReturn(500);
-
-    when(apiExecutor.makeGETRequest(anyString(), any())).thenAnswer(invocation -> {
-        Function<HttpResponse, String> fn = invocation.getArgument(1);
-        return fn.apply(resp); // returns null
-    });
-
-    serviceUnderTest.retrieveAndMapAlternatePartyIDs(party);
-    // no exception → covers "return null" branch
-}
-
-@Test
-void testRetrieveAndMapAlternatePartyIDs_jsonProcessingException() throws Exception {
-    PartyVO party = new PartyVO();
-    party.setKey("P001");
-    party.setFullName("John");
-
-    HttpResponse resp = mock(HttpResponse.class);
-    StatusLine statusLine = mock(StatusLine.class);
-    HttpEntity entity = new StringEntity("{ invalid json }");
-
     when(resp.getStatusLine()).thenReturn(statusLine);
-    when(statusLine.getStatusCode()).thenReturn(200);
-    when(resp.getEntity()).thenReturn(entity);
+    when(resp.getEntity()).thenReturn(new StringEntity("{\"error\":\"server\"}", StandardCharsets.UTF_8));
 
-    when(apiExecutor.makeGETRequest(anyString(), any())).thenAnswer(invocation -> {
-        Function<HttpResponse, String> fn = invocation.getArgument(1);
+    when(apiExecutor.makeGETRequest(contains("alternateService"), any())).thenAnswer(inv -> {
+        Function<HttpResponse, String> fn = inv.getArgument(1);
         return fn.apply(resp);
     });
 
-    when(objectMapper.readValue(anyString(), eq(AlternatePartyKeyResponse.class)))
-        .thenThrow(new JsonProcessingException("boom") {});
-
-    // Act + Assert
-    serviceUnderTest.retrieveAndMapAlternatePartyIDs(party);
-    // Exception caught internally → branch covered
+    // when / then
+    assertThrows(RuntimeException.class,
+            () -> partyLookupService.searchPartyLookupBusinessAggregationOperation(payload));
 }
