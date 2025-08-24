@@ -1,145 +1,51 @@
-package com.td.tdi.api.ipirg.service;
+private HashMap<String, String> retrieveAndMapAlternatePartyIDs(
+    RetrieveBusinessListResponse customerSearchResponse,
+    SearchPartyLookupBusinessAggregationRequestPayload searchPartyLookupVO
+) {
 
-import com.td.coreapi.common.oauthclient.OAuthClient;
-import org.apache.http.client.HttpClient;
-import org.apache.http.client.ResponseHandler;
-import org.apache.http.client.methods.HttpGet;
-import org.apache.http.client.methods.HttpPost;
-import org.json.simple.JSONObject;
-import org.json.simple.parser.ParseException;
-import org.junit.jupiter.api.*;
-import org.mockito.MockedStatic;
-import org.mockito.Mockito;
+    ExecutorService executor = Executors.newFixedThreadPool(10); // limit concurrency
+    List<CompletableFuture<Map.Entry<String, String>>> futures = customerSearchResponse.getBusiness().stream()
+        .map(party -> CompletableFuture.supplyAsync(() -> {
+            String alternatePartyKeyResponse = null;
+            try {
+                log.info("Calling alternate party API for {}", party.getFullName());
+                alternatePartyKeyResponse = apiExecutor.makeGETRequest(
+                    alternatePartyServiceUrl + "primaryPartyKey=" + party.getKey() +
+                        "&partyKeyTypeCd=" + PartyLookupBusinessAggregationConstants.API_PARTY_TYPE_IPI,
+                    (resp) -> {
+                        if (resp.getStatusLine().getStatusCode() == 200) {
+                            log.info("Successfully received alternate party key for {}", party.getFullName());
+                            return EntityUtils.toString(resp.getEntity());
+                        }
+                        log.error("Failed to retrieve alternate party key for {}", party.getFullName());
+                        return null;
+                    });
+            } catch (Exception e) {
+                log.error("Error calling Party API for Alternate party key {}", e.getMessage());
+            }
 
-import java.io.IOException;
+            if (alternatePartyKeyResponse == null) {
+                return Map.entry(party.getKey(), null);
+            } else {
+                try {
+                    String altKey = objectMapper
+                        .readValue(alternatePartyKeyResponse, RetrieveAlternatePartyKeyResponse.class)
+                        .getPartyToAlternateParty().get(0).getAlternateKey();
+                    return Map.entry(party.getKey(), altKey);
+                } catch (JsonProcessingException e) {
+                    log.error("Error parsing alternate party key response {} for party {}",
+                        alternatePartyKeyResponse, party.getFullName());
+                    return Map.entry(party.getKey(), null);
+                }
+            }
+        }, executor))
+        .toList();
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
+    // Wait for all to finish and collect results
+    HashMap<String, String> result = futures.stream()
+        .map(CompletableFuture::join)
+        .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (a, b) -> a, HashMap::new));
 
-class PartyAPIExecutorTest {
-
-    private PartyAPIExecutor executor;
-    private static HttpClient mockClient;
-    private static OAuthClient mockOAuth;
-    private static MockedStatic<OAuthClient> oAuthClientStatic;
-
-    @BeforeAll
-    static void init() {
-        mockClient = mock(HttpClient.class);
-        mockOAuth = mock(OAuthClient.class);
-
-        // One-time static mock
-        oAuthClientStatic = Mockito.mockStatic(OAuthClient.class);
-        oAuthClientStatic.when(OAuthClient::getInstance).thenReturn(mockOAuth);
-
-        when(mockOAuth.getSyncClient()).thenReturn(mockClient);
-    }
-
-    @AfterAll
-    static void cleanup() {
-        // Close static mock after all tests
-        oAuthClientStatic.close();
-    }
-
-    @BeforeEach
-    void setUp() throws Exception {
-        // Reset method mocks before each test
-        doNothing().when(mockOAuth).addClientCredentialsToken(any(HttpGet.class));
-        doNothing().when(mockOAuth).addClientCredentialsToken(any(HttpPost.class));
-    }
-
-    @Test
-    void testMakeGETRequest_WithDevProfile() throws Exception {
-        executor = new PartyAPIExecutor("xid", "xsys", "dev");
-
-        ResponseHandler<String> handler = response -> "GET_OK";
-        when(mockClient.execute(any(HttpGet.class), any(ResponseHandler.class))).thenReturn("GET_OK");
-
-        String result = executor.makeGETRequest("http://test.com", handler);
-        assertEquals("GET_OK", result);
-    }
-
-    @Test
-    void testMakeGETRequest_WithSitProfile() throws Exception {
-        executor = new PartyAPIExecutor("xid2", "xsys2", "sit");
-
-        ResponseHandler<String> handler = response -> "GET_SIT";
-        when(mockClient.execute(any(HttpGet.class), any(ResponseHandler.class))).thenReturn("GET_SIT");
-
-        String result = executor.makeGETRequest("http://sit.com", handler);
-        assertEquals("GET_SIT", result);
-    }
-
-    @Test
-    void testMakeGETRequest_WithOtherProfile_NoHeaders() throws Exception {
-        executor = new PartyAPIExecutor("xid3", "xsys3", "prod");
-
-        ResponseHandler<String> handler = response -> "GET_PROD";
-        when(mockClient.execute(any(HttpGet.class), any(ResponseHandler.class))).thenReturn("GET_PROD");
-
-        String result = executor.makeGETRequest("http://prod.com", handler);
-        assertEquals("GET_PROD", result);
-    }
-
-    @Test
-    void testMakePOSTRequest_WithDevProfile() throws Exception {
-        executor = new PartyAPIExecutor("xid4", "xsys4", "dev");
-
-        ResponseHandler<String> handler = response -> "POST_OK";
-        when(mockClient.execute(any(HttpPost.class), any(ResponseHandler.class))).thenReturn("POST_OK");
-
-        String result = executor.makePOSTRequest("http://post.com", "{}", handler);
-        assertEquals("POST_OK", result);
-    }
-
-    @Test
-    void testMakePOSTRequest_WithSitProfile() throws Exception {
-        executor = new PartyAPIExecutor("xid5", "xsys5", "sit");
-
-        ResponseHandler<String> handler = response -> "POST_SIT";
-        when(mockClient.execute(any(HttpPost.class), any(ResponseHandler.class))).thenReturn("POST_SIT");
-
-        String result = executor.makePOSTRequest("http://post-sit.com", "{}", handler);
-        assertEquals("POST_SIT", result);
-    }
-
-    @Test
-    void testMakePOSTRequest_WithOtherProfile_NoHeaders() throws Exception {
-        executor = new PartyAPIExecutor("xid6", "xsys6", "uat");
-
-        ResponseHandler<String> handler = response -> "POST_UAT";
-        when(mockClient.execute(any(HttpPost.class), any(ResponseHandler.class))).thenReturn("POST_UAT");
-
-        String result = executor.makePOSTRequest("http://post-uat.com", "{}", handler);
-        assertEquals("POST_UAT", result);
-    }
-
-    @Test
-    void testIsStatusResponse_True() {
-        executor = new PartyAPIExecutor("id", "sys", "dev");
-        JSONObject obj = new JSONObject();
-        obj.put("status", "ok");
-
-        boolean result = executor.isStatusResponse(obj.toJSONString());
-        assertTrue(result);
-    }
-
-    @Test
-    void testIsStatusResponse_False_NoStatusKey() {
-        executor = new PartyAPIExecutor("id", "sys", "dev");
-        JSONObject obj = new JSONObject();
-        obj.put("data", "ok");
-
-        boolean result = executor.isStatusResponse(obj.toJSONString());
-        assertFalse(result);
-    }
-
-    @Test
-    void testIsStatusResponse_ParseException() {
-        executor = new PartyAPIExecutor("id", "sys", "dev");
-
-        boolean result = executor.isStatusResponse("not-json");
-        assertFalse(result);
-    }
+    executor.shutdown();
+    return result;
 }
