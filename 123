@@ -1,100 +1,133 @@
-@Test
-void testSearchPartyLookupBusinessAggregationOperation_customerService_success() throws Exception {
-    // given
-    SearchPartyLookupBusinessAggregationRequestPayload payload = new SearchPartyLookupBusinessAggregationRequestPayload();
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
 
-    HttpResponse resp = mock(HttpResponse.class);
-    StatusLine statusLine = mock(StatusLine.class);
-    when(statusLine.getStatusCode()).thenReturn(200);
-    when(resp.getStatusLine()).thenReturn(statusLine);
-    when(resp.getEntity()).thenReturn(new StringEntity("{\"ok\":\"yes\"}", StandardCharsets.UTF_8));
+import org.apache.http.client.HttpClient;
+import org.apache.http.client.ResponseHandler;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.entity.StringEntity;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mockito.MockedStatic;
+import org.mockito.Mockito;
 
-    when(apiExecutor.makeGETRequest(contains("customerService"), any())).thenAnswer(inv -> {
-        Function<HttpResponse, String> fn = inv.getArgument(1);
-        return fn.apply(resp);
-    });
+import static org.junit.jupiter.api.Assertions.*;
 
-    SearchPartyLookupBusinessAggregationResponse expected = new SearchPartyLookupBusinessAggregationResponse();
-    when(objectMapper.readValue(anyString(), eq(SearchPartyLookupBusinessAggregationResponse.class)))
-            .thenReturn(expected);
+class PartyAPIExecutorTest {
 
-    // when
-    SearchPartyLookupBusinessAggregationResponse actual =
-            partyLookupService.searchPartyLookupBusinessAggregationOperation(payload);
+    private PartyAPIExecutor executor;
+    private HttpClient mockClient;
+    private OAuthClient mockOAuth;
 
-    // then
-    assertSame(expected, actual);
-}
+    @BeforeEach
+    void setUp() throws Exception {
+        mockClient = mock(HttpClient.class);
+        mockOAuth = mock(OAuthClient.class);
 
-@Test
-void testSearchPartyLookupBusinessAggregationOperation_alternateService_success() throws Exception {
-    // given
-    SearchPartyLookupBusinessAggregationRequestPayload payload = new SearchPartyLookupBusinessAggregationRequestPayload();
+        // Mock static method OAuthClient.getInstance()
+        MockedStatic<OAuthClient> oAuthClientStatic = Mockito.mockStatic(OAuthClient.class);
+        oAuthClientStatic.when(OAuthClient::getInstance).thenReturn(mockOAuth);
 
-    HttpResponse resp = mock(HttpResponse.class);
-    StatusLine statusLine = mock(StatusLine.class);
-    when(statusLine.getStatusCode()).thenReturn(200);
-    when(resp.getStatusLine()).thenReturn(statusLine);
-    when(resp.getEntity()).thenReturn(new StringEntity("{\"alt\":\"yes\"}", StandardCharsets.UTF_8));
+        when(mockOAuth.getSyncClient()).thenReturn(mockClient);
+        doNothing().when(mockOAuth).addClientCredentialsToken(any(HttpGet.class));
+        doNothing().when(mockOAuth).addClientCredentialsToken(any(HttpPost.class));
+    }
 
-    when(apiExecutor.makeGETRequest(contains("alternateService"), any())).thenAnswer(inv -> {
-        Function<HttpResponse, String> fn = inv.getArgument(1);
-        return fn.apply(resp);
-    });
+    @Test
+    void testMakeGETRequest_DEVProfile_addsHeaders() throws Exception {
+        executor = new PartyAPIExecutor("xid", "xsys", "dev");
 
-    SearchPartyLookupBusinessAggregationResponse expected = new SearchPartyLookupBusinessAggregationResponse();
-    when(objectMapper.readValue(anyString(), eq(SearchPartyLookupBusinessAggregationResponse.class)))
-            .thenReturn(expected);
+        ResponseHandler<String> handler = response -> "OK";
+        when(mockClient.execute(any(HttpGet.class), any(ResponseHandler.class))).thenReturn("OK");
 
-    // when
-    SearchPartyLookupBusinessAggregationResponse actual =
-            partyLookupService.searchPartyLookupBusinessAggregationOperation(payload);
+        String result = executor.makeGETRequest("http://test.com", handler);
 
-    // then
-    assertSame(expected, actual);
-}
+        assertEquals("OK", result);
+        verify(mockClient).execute(any(HttpGet.class), any(ResponseHandler.class));
+    }
 
-@Test
-void testSearchPartyLookupBusinessAggregationOperation_customerService_jsonProcessingException() throws Exception {
-    // given
-    SearchPartyLookupBusinessAggregationRequestPayload payload = new SearchPartyLookupBusinessAggregationRequestPayload();
+    @Test
+    void testMakeGETRequest_SITProfile_addsHeaders() throws Exception {
+        executor = new PartyAPIExecutor("xid", "xsys", "sit");
 
-    HttpResponse resp = mock(HttpResponse.class);
-    StatusLine statusLine = mock(StatusLine.class);
-    when(statusLine.getStatusCode()).thenReturn(200);
-    when(resp.getStatusLine()).thenReturn(statusLine);
-    when(resp.getEntity()).thenReturn(new StringEntity("{\"bad\":\"json\"}", StandardCharsets.UTF_8));
+        ResponseHandler<String> handler = response -> "OK";
+        when(mockClient.execute(any(HttpGet.class), any(ResponseHandler.class))).thenReturn("OK");
 
-    when(apiExecutor.makeGETRequest(contains("customerService"), any())).thenAnswer(inv -> {
-        Function<HttpResponse, String> fn = inv.getArgument(1);
-        return fn.apply(resp);
-    });
+        String result = executor.makeGETRequest("http://test.com", handler);
 
-    when(objectMapper.readValue(anyString(), eq(SearchPartyLookupBusinessAggregationResponse.class)))
-            .thenThrow(new JsonProcessingException("boom"){});
+        assertEquals("OK", result);
+    }
 
-    // when / then
-    assertThrows(RuntimeException.class,
-            () -> partyLookupService.searchPartyLookupBusinessAggregationOperation(payload));
-}
+    @Test
+    void testMakeGETRequest_OtherProfile_noHeaders() throws Exception {
+        executor = new PartyAPIExecutor("xid", "xsys", "prod");
 
-@Test
-void testSearchPartyLookupBusinessAggregationOperation_alternateService_statusNot200() throws Exception {
-    // given
-    SearchPartyLookupBusinessAggregationRequestPayload payload = new SearchPartyLookupBusinessAggregationRequestPayload();
+        ResponseHandler<String> handler = response -> "OK";
+        when(mockClient.execute(any(HttpGet.class), any(ResponseHandler.class))).thenReturn("OK");
 
-    HttpResponse resp = mock(HttpResponse.class);
-    StatusLine statusLine = mock(StatusLine.class);
-    when(statusLine.getStatusCode()).thenReturn(500);
-    when(resp.getStatusLine()).thenReturn(statusLine);
-    when(resp.getEntity()).thenReturn(new StringEntity("{\"error\":\"server\"}", StandardCharsets.UTF_8));
+        String result = executor.makeGETRequest("http://test.com", handler);
 
-    when(apiExecutor.makeGETRequest(contains("alternateService"), any())).thenAnswer(inv -> {
-        Function<HttpResponse, String> fn = inv.getArgument(1);
-        return fn.apply(resp);
-    });
+        assertEquals("OK", result);
+    }
 
-    // when / then
-    assertThrows(RuntimeException.class,
-            () -> partyLookupService.searchPartyLookupBusinessAggregationOperation(payload));
+    @Test
+    void testMakePOSTRequest_DEVProfile_addsHeadersAndPayload() throws Exception {
+        executor = new PartyAPIExecutor("xid", "xsys", "dev");
+
+        ResponseHandler<String> handler = response -> "POST_OK";
+        when(mockClient.execute(any(HttpPost.class), any(ResponseHandler.class))).thenReturn("POST_OK");
+
+        String result = executor.makePOSTRequest("http://test.com", "{\"key\":\"value\"}", handler);
+
+        assertEquals("POST_OK", result);
+        verify(mockClient).execute(any(HttpPost.class), any(ResponseHandler.class));
+    }
+
+    @Test
+    void testMakePOSTRequest_SITProfile_addsHeaders() throws Exception {
+        executor = new PartyAPIExecutor("xid", "xsys", "sit");
+
+        ResponseHandler<String> handler = response -> "POST_OK";
+        when(mockClient.execute(any(HttpPost.class), any(ResponseHandler.class))).thenReturn("POST_OK");
+
+        String result = executor.makePOSTRequest("http://test.com", "{\"key\":\"value\"}", handler);
+
+        assertEquals("POST_OK", result);
+    }
+
+    @Test
+    void testMakePOSTRequest_OtherProfile_noHeaders() throws Exception {
+        executor = new PartyAPIExecutor("xid", "xsys", "uat");
+
+        ResponseHandler<String> handler = response -> "POST_OK";
+        when(mockClient.execute(any(HttpPost.class), any(ResponseHandler.class))).thenReturn("POST_OK");
+
+        String result = executor.makePOSTRequest("http://test.com", "{\"key\":\"value\"}", handler);
+
+        assertEquals("POST_OK", result);
+    }
+
+    @Test
+    void testIsStatusResponse_true() {
+        executor = new PartyAPIExecutor("xid", "xsys", "dev");
+
+        String json = "{\"status\":\"ok\"}";
+        assertTrue(executor.isStatusResponse(json));
+    }
+
+    @Test
+    void testIsStatusResponse_false_noStatus() {
+        executor = new PartyAPIExecutor("xid", "xsys", "dev");
+
+        String json = "{\"message\":\"ok\"}";
+        assertFalse(executor.isStatusResponse(json));
+    }
+
+    @Test
+    void testIsStatusResponse_false_invalidJson() {
+        executor = new PartyAPIExecutor("xid", "xsys", "dev");
+
+        String badJson = "not-json";
+        assertFalse(executor.isStatusResponse(badJson));
+    }
 }
