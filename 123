@@ -1,51 +1,33 @@
-private HashMap<String, String> retrieveAndMapAlternatePartyIDs(
-    RetrieveBusinessListResponse customerSearchResponse,
-    SearchPartyLookupBusinessAggregationRequestPayload searchPartyLookupVO
-) {
+@Test
+void testCustomerPartySearch_nullEntityResponse() throws Exception {
+    // Arrange
+    SearchPartyLookupBusinessAggregationRequestPayload request = createRequest(1);
 
-    ExecutorService executor = Executors.newFixedThreadPool(10); // limit concurrency
-    List<CompletableFuture<Map.Entry<String, String>>> futures = customerSearchResponse.getBusiness().stream()
-        .map(party -> CompletableFuture.supplyAsync(() -> {
-            String alternatePartyKeyResponse = null;
-            try {
-                log.info("Calling alternate party API for {}", party.getFullName());
-                alternatePartyKeyResponse = apiExecutor.makeGETRequest(
-                    alternatePartyServiceUrl + "primaryPartyKey=" + party.getKey() +
-                        "&partyKeyTypeCd=" + PartyLookupBusinessAggregationConstants.API_PARTY_TYPE_IPI,
-                    (resp) -> {
-                        if (resp.getStatusLine().getStatusCode() == 200) {
-                            log.info("Successfully received alternate party key for {}", party.getFullName());
-                            return EntityUtils.toString(resp.getEntity());
-                        }
-                        log.error("Failed to retrieve alternate party key for {}", party.getFullName());
-                        return null;
-                    });
-            } catch (Exception e) {
-                log.error("Error calling Party API for Alternate party key {}", e.getMessage());
-            }
+    when(apiExecutor.isStatusResponse(any())).thenReturn(false);
 
-            if (alternatePartyKeyResponse == null) {
-                return Map.entry(party.getKey(), null);
-            } else {
-                try {
-                    String altKey = objectMapper
-                        .readValue(alternatePartyKeyResponse, RetrieveAlternatePartyKeyResponse.class)
-                        .getPartyToAlternateParty().get(0).getAlternateKey();
-                    return Map.entry(party.getKey(), altKey);
-                } catch (JsonProcessingException e) {
-                    log.error("Error parsing alternate party key response {} for party {}",
-                        alternatePartyKeyResponse, party.getFullName());
-                    return Map.entry(party.getKey(), null);
-                }
-            }
-        }, executor))
-        .toList();
+    // Stub makeGETRequest
+    when(apiExecutor.makeGETRequest(
+            contains("customerUrl"),
+            ArgumentMatchers.<ResponseHandler<String>>any())
+    ).thenAnswer(invocation -> {
+        ResponseHandler<String> handler = invocation.getArgument(1);
 
-    // Wait for all to finish and collect results
-    HashMap<String, String> result = futures.stream()
-        .map(CompletableFuture::join)
-        .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (a, b) -> a, HashMap::new));
+        HttpResponse httpResponse = mock(HttpResponse.class);
+        StatusLine statusLine = mock(StatusLine.class);
+        HttpEntity httpEntity = mock(HttpEntity.class);
 
-    executor.shutdown();
-    return result;
+        when(statusLine.getStatusCode()).thenReturn(200);
+        when(httpResponse.getStatusLine()).thenReturn(statusLine);
+        when(httpResponse.getEntity()).thenReturn(httpEntity);
+
+        // 👇 Force EntityUtils.toString(entity) to return null
+        try (MockedStatic<EntityUtils> entityUtilsMock = Mockito.mockStatic(EntityUtils.class)) {
+            entityUtilsMock.when(() -> EntityUtils.toString(httpEntity)).thenReturn(null);
+
+            // Act & Assert
+            assertThrows(PartyLookupException.class,
+                    () -> service.searchPartyLookupBusinessAggregationOperation(request));
+        }
+        return null;
+    });
 }
