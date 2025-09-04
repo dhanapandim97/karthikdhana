@@ -1,32 +1,44 @@
 public class ProductConstraintDeserializer extends StdDeserializer<ProductConstraint> {
 
+    private final JsonDeserializer<Object> defaultDeserializer;
+
     public ProductConstraintDeserializer() {
         super(ProductConstraint.class);
+        this.defaultDeserializer = null; // real default is injected later
+    }
+
+    public ProductConstraintDeserializer(JsonDeserializer<?> defaultDeserializer) {
+        super(ProductConstraint.class);
+        this.defaultDeserializer = (JsonDeserializer<Object>) defaultDeserializer;
     }
 
     @Override
-    public ProductConstraint deserialize(JsonParser p, DeserializationContext ctxt)
-            throws IOException {
-        JsonNode node = p.readValueAsTree();
-        ProductConstraint product = new ProductConstraint();
+    public ProductConstraint deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {
+        JsonNode node = p.getCodec().readTree(p);
 
-        if (node.isTextual()) {
-            String val = node.asText();
-            if (!"*".equals(val)) {
-                product.setRawText(val);
+        // Case 1: plain text
+        if (node.getNodeType() == JsonNodeType.STRING || node.isTextual()) {
+            ProductConstraint product = new ProductConstraint();
+            String text = node.asText();
+            if (!"*".equals(text)) {
+                product.setRawText(text);
             }
             return product;
         }
 
-        if (node.has("ProductGroup")) {
-            product.setProductGroup(node.get("ProductGroup").asText());
+        // Case 2: structured XML -> delegate to default
+        if (defaultDeserializer != null) {
+            return (ProductConstraint) defaultDeserializer.deserialize(p, ctxt);
         }
-        if (node.has("ProductClassification")) {
-            product.setProductClassification(node.get("ProductClassification").asText());
-        }
-        if (node.has("ProductCategory")) {
-            product.setProductCategory(node.get("ProductCategory").asText());
-        }
-        return product;
+
+        // fallback
+        return new ProductConstraint();
+    }
+
+    @Override
+    public JsonDeserializer<?> createContextual(DeserializationContext ctxt, BeanProperty property)
+            throws JsonMappingException {
+        JsonDeserializer<?> deser = ctxt.findRootValueDeserializer(ctxt.constructType(ProductConstraint.class));
+        return new ProductConstraintDeserializer(deser);
     }
 }
