@@ -1,39 +1,25 @@
-import com.fasterxml.jackson.core.JsonParser;
-import com.fasterxml.jackson.core.JsonToken;
-import com.fasterxml.jackson.databind.*;
-import com.fasterxml.jackson.databind.deser.std.DelegatingDeserializer;
+@Override
+public Object deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {
+    JsonToken token = p.currentToken();
 
-import java.io.IOException;
-
-public class LenientBeanDeserializer extends DelegatingDeserializer {
-
-    private final JavaType type;
-
-    protected LenientBeanDeserializer(JsonDeserializer<?> delegate, JavaType type) {
-        super(delegate);
-        this.type = type;
-    }
-
-    @Override
-    protected JsonDeserializer<?> newDelegatingInstance(JsonDeserializer<?> newDelegate) {
-        return new LenientBeanDeserializer(newDelegate, type);
-    }
-
-    @Override
-    public Object deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {
-        JsonToken token = p.currentToken();
-        System.out.println(">> Deserializing " + type + " with token " + token);
-
-        // Case 1: plain string provided instead of object
-        if (token == JsonToken.VALUE_STRING || token == JsonToken.VALUE_EMBEDDED_OBJECT) {
-            try {
-                return type.getRawClass().getDeclaredConstructor().newInstance();
-            } catch (Exception e) {
-                throw new IOException("Cannot create empty instance of " + type, e);
-            }
+    // Case 1: String field
+    if (type.getRawClass() == String.class && token == JsonToken.VALUE_STRING) {
+        String value = p.getText();
+        if ("*".equals(value)) {
+            return null; // ignore "*"
         }
-
-        // Case 2: normal object → delegate
-        return super.deserialize(p, ctxt);
+        return value; // normal string
     }
+
+    // Case 2: POJO field but input is String → create empty object
+    if (token == JsonToken.VALUE_STRING) {
+        try {
+            return type.getRawClass().getDeclaredConstructor().newInstance();
+        } catch (Exception e) {
+            return null; // fallback: null if no default ctor
+        }
+    }
+
+    // Case 3: all else → normal
+    return super.deserialize(p, ctxt);
 }
