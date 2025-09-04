@@ -6,49 +6,49 @@ import com.fasterxml.jackson.databind.node.JsonNodeType;
 
 import java.io.IOException;
 
-public class ProductConstraintDeserializer
-        extends StdDeserializer<ProductConstraint>
+public class GenericDelegatingDeserializer<T>
+        extends StdDeserializer<T>
         implements ContextualDeserializer {
 
-    private final JsonDeserializer<Object> defaultDeserializer;
+    private final JsonDeserializer<Object> delegate;
+    private final JavaType type;
 
-    public ProductConstraintDeserializer() {
-        super(ProductConstraint.class);
-        this.defaultDeserializer = null;
+    public GenericDelegatingDeserializer(JavaType type) {
+        super(type);
+        this.type = type;
+        this.delegate = null;
     }
 
-    private ProductConstraintDeserializer(JsonDeserializer<?> defaultDeserializer) {
-        super(ProductConstraint.class);
-        this.defaultDeserializer = (JsonDeserializer<Object>) defaultDeserializer;
+    private GenericDelegatingDeserializer(JavaType type, JsonDeserializer<?> delegate) {
+        super(type);
+        this.type = type;
+        this.delegate = (JsonDeserializer<Object>) delegate;
     }
 
     @Override
-    public ProductConstraint deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {
+    @SuppressWarnings("unchecked")
+    public T deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {
         JsonNode node = p.getCodec().readTree(p);
 
-        // Case 1: plain text <Product>*</Product>
+        // Case 1: plain text <Pojo>*</Pojo>
         if (node.getNodeType() == JsonNodeType.STRING || node.isTextual()) {
-            ProductConstraint product = new ProductConstraint();
-            String text = node.asText();
-            if (!"*".equals(text)) {
-                product.setRawText(text);
-            }
-            return product;
+            // just ignore it → return empty POJO
+            return (T) ctxt.findRootValueDeserializer(type)
+                           .getEmptyValue(ctxt);
         }
 
-        // Case 2: structured XML -> delegate to default
-        if (defaultDeserializer != null) {
-            return (ProductConstraint) defaultDeserializer.deserialize(p, ctxt);
+        // Case 2: normal structured XML → delegate
+        if (delegate != null) {
+            return (T) delegate.deserialize(p, ctxt);
         }
 
-        return new ProductConstraint();
+        return null;
     }
 
     @Override
     public JsonDeserializer<?> createContextual(DeserializationContext ctxt, BeanProperty property)
             throws JsonMappingException {
-        JsonDeserializer<?> deser =
-                ctxt.findRootValueDeserializer(ctxt.constructType(ProductConstraint.class));
-        return new ProductConstraintDeserializer(deser);
+        JsonDeserializer<Object> deser = ctxt.findNonContextualValueDeserializer(type);
+        return new GenericDelegatingDeserializer<>(type, deser);
     }
 }
