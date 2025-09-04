@@ -1,13 +1,23 @@
-public class ProductConstraintDeserializer extends StdDeserializer<ProductConstraint> {
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.databind.*;
+import com.fasterxml.jackson.databind.deser.ContextualDeserializer;
+import com.fasterxml.jackson.databind.deser.std.StdDeserializer;
+import com.fasterxml.jackson.databind.node.JsonNodeType;
+
+import java.io.IOException;
+
+public class ProductConstraintDeserializer
+        extends StdDeserializer<ProductConstraint>
+        implements ContextualDeserializer {
 
     private final JsonDeserializer<Object> defaultDeserializer;
 
     public ProductConstraintDeserializer() {
         super(ProductConstraint.class);
-        this.defaultDeserializer = null; // real default is injected later
+        this.defaultDeserializer = null;
     }
 
-    public ProductConstraintDeserializer(JsonDeserializer<?> defaultDeserializer) {
+    private ProductConstraintDeserializer(JsonDeserializer<?> defaultDeserializer) {
         super(ProductConstraint.class);
         this.defaultDeserializer = (JsonDeserializer<Object>) defaultDeserializer;
     }
@@ -16,7 +26,7 @@ public class ProductConstraintDeserializer extends StdDeserializer<ProductConstr
     public ProductConstraint deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {
         JsonNode node = p.getCodec().readTree(p);
 
-        // Case 1: plain text
+        // Case 1: plain text <Product>*</Product>
         if (node.getNodeType() == JsonNodeType.STRING || node.isTextual()) {
             ProductConstraint product = new ProductConstraint();
             String text = node.asText();
@@ -31,14 +41,14 @@ public class ProductConstraintDeserializer extends StdDeserializer<ProductConstr
             return (ProductConstraint) defaultDeserializer.deserialize(p, ctxt);
         }
 
-        // fallback
         return new ProductConstraint();
     }
 
     @Override
     public JsonDeserializer<?> createContextual(DeserializationContext ctxt, BeanProperty property)
             throws JsonMappingException {
-        JsonDeserializer<?> deser = ctxt.findRootValueDeserializer(ctxt.constructType(ProductConstraint.class));
+        JsonDeserializer<?> deser =
+                ctxt.findRootValueDeserializer(ctxt.constructType(ProductConstraint.class));
         return new ProductConstraintDeserializer(deser);
     }
 }
