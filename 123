@@ -1,43 +1,64 @@
-import com.fasterxml.jackson.databind.JavaType;
-import com.fasterxml.jackson.databind.module.SimpleModule;
-import com.fasterxml.jackson.dataformat.xml.XmlMapper;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.http.converter.HttpMessageConverter;
-import org.springframework.http.converter.xml.MappingJackson2XmlHttpMessageConverter;
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.databind.*;
+import com.fasterxml.jackson.databind.deser.ContextualDeserializer;
+import com.fasterxml.jackson.databind.deser.std.StdDeserializer;
+import com.fasterxml.jackson.databind.node.JsonNodeType;
 
-import java.util.List;
+import java.io.IOException;
 
-@Configuration
-public class XmlConfig {
+public class GenericDelegatingDeserializer<T>
+        extends StdDeserializer<T>
+        implements ContextualDeserializer {
 
-    @Bean
-    public MappingJackson2XmlHttpMessageConverter xmlConverter() {
-        XmlMapper xmlMapper = new XmlMapper();
+    private final JsonDeserializer<Object> delegate;
+    private final JavaType type;
 
-        SimpleModule module = new SimpleModule() {
-            @Override
-            public void setupModule(SetupContext context) {
-                super.setupModule(context);
+    public GenericDelegatingDeserializer(JavaType type) {
+        super(type);
+        this.type = type;
+        this.delegate = null;
+    }
 
-                // Register our delegating deserializer for ALL beans
-                context.addDeserializers(new Deserializers.Base() {
-                    @Override
-                    public JsonDeserializer<?> findBeanDeserializer(
-                            JavaType type,
-                            DeserializationConfig config,
-                            BeanDescription beanDesc) {
-                        // Only wrap "real POJOs" (ignore primitives, Maps, Lists, etc.)
-                        if (beanDesc.getBeanClass().getPackage().getName().startsWith("com.mycompany")) {
-                            return new GenericDelegatingDeserializer<>(type);
-                        }
-                        return null;
-                    }
-                });
+    private GenericDelegatingDeserializer(JavaType type, JsonDeserializer<?> delegate) {
+        super(type);
+        this.type = type;
+        this.delegate = (JsonDeserializer<Object>) delegate;
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public T deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {
+        // peek as tree without losing parser
+        JsonNode node = p.readValueAsTree();
+
+        if (node == null) {
+            return (T) ctxt.findRootValueDeserializer(type).getEmptyValue(ctxt);
+        }
+
+        // Case 1: plain text <Pojo>*</Pojo>
+        if (node.getNodeType() == JsonNodeType.STRING || node.isTextual()) {
+            String text = node.asText();
+            if ("*".equals(text)) {
+                // ignore → empty POJO
+                return (T) ctxt.findRootValueDeserializer(type).getEmptyValue(ctxt);
             }
-        };
+        }
 
-        xmlMapper.registerModule(module);
-        return new MappingJackson2XmlHttpMessageConverter(xmlMapper);
+        // Case 2: structured XML → reparse with delegate
+        if (delegate != null) {
+            // Convert node back to parser for delegate
+            JsonParser nodeParser = node.traverse(p.getCodec());
+            nodeParser.nextToken();
+            return (T) delegate.deserialize(nodeParser, ctxt);
+        }
+
+        return (T) ctxt.findRootValueDeserializer(type).getEmptyValue(ctxt);
+    }
+
+    @Override
+    public JsonDeserializer<?> createContextual(DeserializationContext ctxt, BeanProperty property)
+            throws JsonMappingException {
+        JsonDeserializer<Object> deser = ctxt.findNonContextualValueDeserializer(type);
+        return new GenericDelegatingDeserializer<>(type, deser);
     }
 }
