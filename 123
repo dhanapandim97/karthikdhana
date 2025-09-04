@@ -1,55 +1,80 @@
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonToken;
 import com.fasterxml.jackson.databind.*;
-import com.fasterxml.jackson.databind.deser.ContextualDeserializer;
-import com.fasterxml.jackson.databind.deser.std.StdDeserializer;
+import com.fasterxml.jackson.databind.deser.std.DelegatingDeserializer;
 
 import java.io.IOException;
 
-public class GenericDelegatingDeserializer<T>
-        extends StdDeserializer<T>
-        implements ContextualDeserializer {
+public class StarIgnoringBeanDeserializer extends DelegatingDeserializer {
 
-    private final JsonDeserializer<Object> delegate;
     private final JavaType type;
 
-    public GenericDelegatingDeserializer(JavaType type) {
-        super(type);
+    protected StarIgnoringBeanDeserializer(JsonDeserializer<?> delegate, JavaType type) {
+        super(delegate);
         this.type = type;
-        this.delegate = null;
-    }
-
-    private GenericDelegatingDeserializer(JavaType type, JsonDeserializer<?> delegate) {
-        super(type);
-        this.type = type;
-        this.delegate = (JsonDeserializer<Object>) delegate;
     }
 
     @Override
-    @SuppressWarnings("unchecked")
-    public T deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {
-        JsonToken token = p.getCurrentToken();
+    protected JsonDeserializer<?> newDelegatingInstance(JsonDeserializer<?> newDelegate) {
+        return new StarIgnoringBeanDeserializer(newDelegate, type);
+    }
 
-        // Case 1: plain string <Pojo>*</Pojo>
-        if (token == JsonToken.VALUE_STRING) {
+    @Override
+    public Object deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {
+        // If we only get a plain "*" instead of an object
+        if (p.currentToken() == JsonToken.VALUE_STRING) {
             String text = p.getText();
             if ("*".equals(text)) {
-                return (T) ctxt.findRootValueDeserializer(type).getEmptyValue(ctxt);
+                try {
+                    // Return an empty instance of the target bean
+                    return type.getRawClass().getDeclaredConstructor().newInstance();
+                } catch (Exception e) {
+                    throw new IOException("Cannot create empty instance of " + type, e);
+                }
             }
         }
-
-        // Case 2: anything else → delegate directly
-        if (delegate != null) {
-            return (T) delegate.deserialize(p, ctxt);
-        }
-
-        return (T) ctxt.findRootValueDeserializer(type).getEmptyValue(ctxt);
+        // Fallback → delegate to default deserializer
+        return super.deserialize(p, ctxt);
     }
+}
 
+
+
+import com.fasterxml.jackson.databind.*;
+import com.fasterxml.jackson.databind.deser.BeanDeserializerModifier;
+import com.fasterxml.jackson.databind.module.SimpleModule;
+
+public class StarIgnoringModule extends SimpleModule {
     @Override
-    public JsonDeserializer<?> createContextual(DeserializationContext ctxt, BeanProperty property)
-            throws JsonMappingException {
-        JsonDeserializer<Object> deser = ctxt.findNonContextualValueDeserializer(type);
-        return new GenericDelegatingDeserializer<>(type, deser);
+    public void setupModule(SetupContext context) {
+        super.setupModule(context);
+        context.addBeanDeserializerModifier(new BeanDeserializerModifier() {
+            @Override
+            public JsonDeserializer<?> modifyDeserializer(
+                    DeserializationConfig config,
+                    BeanDescription beanDesc,
+                    JsonDeserializer<?> deserializer) {
+                return new StarIgnoringBeanDeserializer(deserializer, beanDesc.getType());
+            }
+        });
+    }
+}
+
+
+
+
+import com.fasterxml.jackson.dataformat.xml.XmlMapper;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.http.converter.xml.MappingJackson2XmlHttpMessageConverter;
+
+@Configuration
+public class XmlConfig {
+
+    @Bean
+    public MappingJackson2XmlHttpMessageConverter xmlConverter() {
+        XmlMapper xmlMapper = new XmlMapper();
+        xmlMapper.registerModule(new StarIgnoringModule());
+        return new MappingJackson2XmlHttpMessageConverter(xmlMapper);
     }
 }
