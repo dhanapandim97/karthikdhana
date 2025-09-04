@@ -1,8 +1,8 @@
 import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.core.JsonToken;
 import com.fasterxml.jackson.databind.*;
 import com.fasterxml.jackson.databind.deser.ContextualDeserializer;
 import com.fasterxml.jackson.databind.deser.std.StdDeserializer;
-import com.fasterxml.jackson.databind.node.JsonNodeType;
 
 import java.io.IOException;
 
@@ -28,28 +28,20 @@ public class GenericDelegatingDeserializer<T>
     @Override
     @SuppressWarnings("unchecked")
     public T deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {
-        // peek as tree without losing parser
-        JsonNode node = p.readValueAsTree();
-
-        if (node == null) {
-            return (T) ctxt.findRootValueDeserializer(type).getEmptyValue(ctxt);
-        }
+        JsonToken token = p.getCurrentToken();
 
         // Case 1: plain text <Pojo>*</Pojo>
-        if (node.getNodeType() == JsonNodeType.STRING || node.isTextual()) {
-            String text = node.asText();
+        if (token == JsonToken.VALUE_STRING) {
+            String text = p.getText();
             if ("*".equals(text)) {
-                // ignore → empty POJO
+                // return empty POJO
                 return (T) ctxt.findRootValueDeserializer(type).getEmptyValue(ctxt);
             }
         }
 
-        // Case 2: structured XML → reparse with delegate
+        // Case 2: structured XML → delegate without consuming parser
         if (delegate != null) {
-            // Convert node back to parser for delegate
-            JsonParser nodeParser = node.traverse(p.getCodec());
-            nodeParser.nextToken();
-            return (T) delegate.deserialize(nodeParser, ctxt);
+            return (T) delegate.deserialize(p, ctxt);
         }
 
         return (T) ctxt.findRootValueDeserializer(type).getEmptyValue(ctxt);
