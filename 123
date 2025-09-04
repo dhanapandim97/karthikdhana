@@ -1,33 +1,32 @@
-@Test
-void testCustomerPartySearch_nullEntityResponse() throws Exception {
-    // Arrange
-    SearchPartyLookupBusinessAggregationRequestPayload request = createRequest(1);
+public class ProductConstraintDeserializer extends StdDeserializer<ProductConstraint> {
 
-    when(apiExecutor.isStatusResponse(any())).thenReturn(false);
+    public ProductConstraintDeserializer() {
+        super(ProductConstraint.class);
+    }
 
-    // Stub makeGETRequest
-    when(apiExecutor.makeGETRequest(
-            contains("customerUrl"),
-            ArgumentMatchers.<ResponseHandler<String>>any())
-    ).thenAnswer(invocation -> {
-        ResponseHandler<String> handler = invocation.getArgument(1);
+    @Override
+    public ProductConstraint deserialize(JsonParser p, DeserializationContext ctxt)
+            throws IOException {
+        JsonNode node = p.readValueAsTree();
+        ProductConstraint product = new ProductConstraint();
 
-        HttpResponse httpResponse = mock(HttpResponse.class);
-        StatusLine statusLine = mock(StatusLine.class);
-        HttpEntity httpEntity = mock(HttpEntity.class);
-
-        when(statusLine.getStatusCode()).thenReturn(200);
-        when(httpResponse.getStatusLine()).thenReturn(statusLine);
-        when(httpResponse.getEntity()).thenReturn(httpEntity);
-
-        // 👇 Force EntityUtils.toString(entity) to return null
-        try (MockedStatic<EntityUtils> entityUtilsMock = Mockito.mockStatic(EntityUtils.class)) {
-            entityUtilsMock.when(() -> EntityUtils.toString(httpEntity)).thenReturn(null);
-
-            // Act & Assert
-            assertThrows(PartyLookupException.class,
-                    () -> service.searchPartyLookupBusinessAggregationOperation(request));
+        if (node.isTextual()) {
+            String val = node.asText();
+            if (!"*".equals(val)) {
+                product.setRawText(val);
+            }
+            return product;
         }
-        return null;
-    });
+
+        if (node.has("ProductGroup")) {
+            product.setProductGroup(node.get("ProductGroup").asText());
+        }
+        if (node.has("ProductClassification")) {
+            product.setProductClassification(node.get("ProductClassification").asText());
+        }
+        if (node.has("ProductCategory")) {
+            product.setProductCategory(node.get("ProductCategory").asText());
+        }
+        return product;
+    }
 }
