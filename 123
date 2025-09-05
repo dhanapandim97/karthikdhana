@@ -1,49 +1,13 @@
-import org.junit.jupiter.api.Test;
+@Test
+void testNewDelegatingInstance() {
+    JsonDeserializer<?> mockDelegate = mock(JsonDeserializer.class);
+    JavaType mockType = TypeFactory.defaultInstance().constructType(String.class);
 
-import java.util.Collections;
+    IgnoreStringDeserializer deserializer =
+            new IgnoreStringDeserializer(mockDelegate, mockType);
 
-import static org.junit.jupiter.api.Assertions.*;
+    JsonDeserializer<?> newOne = deserializer.newDelegatingInstance(mockDelegate);
 
-class YourClassTest {
-
-    private final YourClass obj = new YourClass();
-
-    @Test
-    void testReturnsTrueWhenHttp404AndStatus1122() {
-        Additionalstatus addStatus = new Additionalstatus(1122, null, null, null);
-        Status status = new Status("404", null, Collections.singletonList(addStatus));
-
-        boolean result = obj.isNoExistingIPI(status);
-
-        assertTrue(result);
-    }
-
-    @Test
-    void testReturnsFalseWhenHttpCodeNot404() {
-        Additionalstatus addStatus = new Additionalstatus(1122, null, null, null);
-        Status status = new Status("200", null, Collections.singletonList(addStatus));
-
-        boolean result = obj.isNoExistingIPI(status);
-
-        assertFalse(result);
-    }
-
-    @Test
-    void testReturnsFalseWhenStatusCodeNot1122() {
-        Additionalstatus addStatus = new Additionalstatus(9999, null, null, null);
-        Status status = new Status("404", null, Collections.singletonList(addStatus));
-
-        boolean result = obj.isNoExistingIPI(status);
-
-        assertFalse(result);
-    }
-
-    @Test
-    void testReturnsFalseWhenAdditionalStatusNull() {
-        Status status = new Status("404", null, Collections.singletonList(null));
-
-        boolean result = obj.isNoExistingIPI(status);
-
-        assertFalse(result);
-    }
+    assertNotNull(newOne);
+    assertTrue(newOne instanceof IgnoreStringDeserializer);
 }
