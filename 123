@@ -1,22 +1,20 @@
 @Test
 void testDeserializeStringTokenCatchBlock() throws Exception {
     ObjectMapper mapper = new ObjectMapper();
-    // Pick a class with no no-args constructor (e.g., LocalDate)
     JavaType type = TypeFactory.defaultInstance().constructType(LocalDate.class);
 
-    JsonDeserializer<?> delegate =
-            mapper.getDeserializationContext().findRootValueDeserializer(type);
+    // 👇 Mock delegate instead of using mapper.getDeserializationContext()
+    JsonDeserializer<?> delegate = mock(JsonDeserializer.class);
 
     IgnoreStringDeserializer deserializer =
             new IgnoreStringDeserializer(delegate, type);
 
-    // JSON string to force VALUE_STRING
     String json = "\"2025-09-05\"";
     JsonParser parser = mapper.getFactory().createParser(json);
 
     parser.nextToken(); // VALUE_STRING
     Object result = deserializer.deserialize(parser, mapper.getDeserializationContext());
 
-    // Should fall into catch block -> return null
+    // This should go into the catch block → return null
     assertNull(result);
 }
