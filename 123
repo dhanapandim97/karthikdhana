@@ -1,25 +1,49 @@
-@Override
-public Object deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {
-    JsonToken token = p.currentToken();
+import org.junit.jupiter.api.Test;
 
-    // Case 1: String field
-    if (type.getRawClass() == String.class && token == JsonToken.VALUE_STRING) {
-        String value = p.getText();
-        if ("*".equals(value)) {
-            return null; // ignore "*"
-        }
-        return value; // normal string
+import java.util.Collections;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+class YourClassTest {
+
+    private final YourClass obj = new YourClass();
+
+    @Test
+    void testReturnsTrueWhenHttp404AndStatus1122() {
+        Additionalstatus addStatus = new Additionalstatus(1122, null, null, null);
+        Status status = new Status("404", null, Collections.singletonList(addStatus));
+
+        boolean result = obj.isNoExistingIPI(status);
+
+        assertTrue(result);
     }
 
-    // Case 2: POJO field but input is String → create empty object
-    if (token == JsonToken.VALUE_STRING) {
-        try {
-            return type.getRawClass().getDeclaredConstructor().newInstance();
-        } catch (Exception e) {
-            return null; // fallback: null if no default ctor
-        }
+    @Test
+    void testReturnsFalseWhenHttpCodeNot404() {
+        Additionalstatus addStatus = new Additionalstatus(1122, null, null, null);
+        Status status = new Status("200", null, Collections.singletonList(addStatus));
+
+        boolean result = obj.isNoExistingIPI(status);
+
+        assertFalse(result);
     }
 
-    // Case 3: all else → normal
-    return super.deserialize(p, ctxt);
+    @Test
+    void testReturnsFalseWhenStatusCodeNot1122() {
+        Additionalstatus addStatus = new Additionalstatus(9999, null, null, null);
+        Status status = new Status("404", null, Collections.singletonList(addStatus));
+
+        boolean result = obj.isNoExistingIPI(status);
+
+        assertFalse(result);
+    }
+
+    @Test
+    void testReturnsFalseWhenAdditionalStatusNull() {
+        Status status = new Status("404", null, Collections.singletonList(null));
+
+        boolean result = obj.isNoExistingIPI(status);
+
+        assertFalse(result);
+    }
 }
