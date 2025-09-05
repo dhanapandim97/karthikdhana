@@ -1,13 +1,22 @@
 @Test
-void testNewDelegatingInstance() {
-    JsonDeserializer<?> mockDelegate = mock(JsonDeserializer.class);
-    JavaType mockType = TypeFactory.defaultInstance().constructType(String.class);
+void testDeserializeStringTokenCatchBlock() throws Exception {
+    ObjectMapper mapper = new ObjectMapper();
+    // Pick a class with no no-args constructor (e.g., LocalDate)
+    JavaType type = TypeFactory.defaultInstance().constructType(LocalDate.class);
+
+    JsonDeserializer<?> delegate =
+            mapper.getDeserializationContext().findRootValueDeserializer(type);
 
     IgnoreStringDeserializer deserializer =
-            new IgnoreStringDeserializer(mockDelegate, mockType);
+            new IgnoreStringDeserializer(delegate, type);
 
-    JsonDeserializer<?> newOne = deserializer.newDelegatingInstance(mockDelegate);
+    // JSON string to force VALUE_STRING
+    String json = "\"2025-09-05\"";
+    JsonParser parser = mapper.getFactory().createParser(json);
 
-    assertNotNull(newOne);
-    assertTrue(newOne instanceof IgnoreStringDeserializer);
+    parser.nextToken(); // VALUE_STRING
+    Object result = deserializer.deserialize(parser, mapper.getDeserializationContext());
+
+    // Should fall into catch block -> return null
+    assertNull(result);
 }
