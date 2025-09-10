@@ -1,13 +1,35 @@
-@Test
-void testStringClassButNotValueString() throws Exception {
-    ObjectMapper mapper = new ObjectMapper();
-    JavaType type = TypeFactory.defaultInstance().constructType(String.class);
-    IgnoreStringDeserializer d = new IgnoreStringDeserializer(mock(JsonDeserializer.class), type);
+import com.ctc.wstx.sw.DelegatingXMLStreamWriter;
 
-    JsonParser p = mapper.getFactory().createParser("123"); // number, not quoted
-    p.nextToken(); // VALUE_NUMBER_INT
-    Object result = d.deserialize(p, mapper.getDeserializationContext());
+import javax.xml.stream.XMLStreamException;
+import javax.xml.stream.XMLStreamWriter;
 
-    // no branch taken → falls through
-    assertNull(result);
+public class CustomXMLStreamWriter extends DelegatingXMLStreamWriter {
+
+    public CustomXMLStreamWriter(XMLStreamWriter parent) {
+        super(parent);
+    }
+
+    @Override
+    public void writeEmptyElement(String localName) throws XMLStreamException {
+        super.writeStartElement(localName);
+        super.writeEndElement();
+    }
+
+    @Override
+    public void writeEmptyElement(String namespaceURI, String localName) throws XMLStreamException {
+        super.writeStartElement(namespaceURI, localName);
+        super.writeEndElement();
+    }
+
+    @Override
+    public void writeEmptyElement(String prefix, String localName, String namespaceURI) throws XMLStreamException {
+        super.writeStartElement(prefix, localName, namespaceURI);
+        super.writeEndElement();
+    }
+
+    @Override
+    public void writeStartDocument(String encoding, String version) throws XMLStreamException {
+        // force double quotes
+        super.writeProcessingInstruction("xml", "version=\"" + version + "\" encoding=\"" + encoding + "\"");
+    }
 }
