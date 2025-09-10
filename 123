@@ -1,35 +1,44 @@
-import com.ctc.wstx.sw.DelegatingXMLStreamWriter;
+import com.fasterxml.jackson.dataformat.xml.XmlMapper;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpOutputMessage;
+import org.springframework.http.converter.HttpMessageNotWritableException;
+import org.springframework.http.converter.xml.MappingJackson2XmlHttpMessageConverter;
 
-import javax.xml.stream.XMLStreamException;
-import javax.xml.stream.XMLStreamWriter;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 
-public class CustomXMLStreamWriter extends DelegatingXMLStreamWriter {
+@Configuration
+public class JacksonXmlConfig {
 
-    public CustomXMLStreamWriter(XMLStreamWriter parent) {
-        super(parent);
-    }
+    @Bean
+    public MappingJackson2XmlHttpMessageConverter xmlConverter() {
+        XmlMapper mapper = new XmlMapper();
+        mapper.setDefaultUseWrapper(false);
 
-    @Override
-    public void writeEmptyElement(String localName) throws XMLStreamException {
-        super.writeStartElement(localName);
-        super.writeEndElement();
-    }
+        return new MappingJackson2XmlHttpMessageConverter(mapper) {
+            @Override
+            protected void writeInternal(Object object, HttpOutputMessage outputMessage)
+                    throws IOException, HttpMessageNotWritableException {
+                // 1. Generate XML from Jackson
+                String xml = mapper.writeValueAsString(object);
 
-    @Override
-    public void writeEmptyElement(String namespaceURI, String localName) throws XMLStreamException {
-        super.writeStartElement(namespaceURI, localName);
-        super.writeEndElement();
-    }
+                // 2. Force XML declaration with double quotes
+                if (!xml.startsWith("<?xml")) {
+                    xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" + xml;
+                }
 
-    @Override
-    public void writeEmptyElement(String prefix, String localName, String namespaceURI) throws XMLStreamException {
-        super.writeStartElement(prefix, localName, namespaceURI);
-        super.writeEndElement();
-    }
+                // 3. Expand all self-closing tags
+                xml = xml.replaceAll("<(\\w+)([^>]*)/>", "<$1$2></$1>");
 
-    @Override
-    public void writeStartDocument(String encoding, String version) throws XMLStreamException {
-        // force double quotes
-        super.writeProcessingInstruction("xml", "version=\"" + version + "\" encoding=\"" + encoding + "\"");
+                // 4. Write final XML
+                outputMessage.getBody().write(xml.getBytes(
+                        outputMessage.getHeaders().getContentType() != null
+                                && outputMessage.getHeaders().getContentType().getCharset() != null
+                        ? outputMessage.getHeaders().getContentType().getCharset()
+                        : StandardCharsets.UTF_8
+                ));
+            }
+        };
     }
 }
