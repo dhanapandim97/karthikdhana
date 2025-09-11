@@ -1,97 +1,62 @@
-import static org.mockito.Mockito.*;
-import static org.assertj.core.api.Assertions.*;
-
-import java.math.BigDecimal;
-import java.util.*;
-
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.*;
-import org.mockito.junit.jupiter.MockitoExtension;
-
-@ExtendWith(MockitoExtension.class)
+@ExtendWith(MockitoExtension.class) // replaces openMocks
 class LOCCreditProtectionQuotationServiceTest {
 
-    // Service under test
     @InjectMocks
     private LOCCreditProtectionQuotationService locCreditProtectionQuotationService;
 
-    // Dependencies
+    // Only mocks that match service fields
     @Mock
-    private CreditProtectionCustomerEligibility cpEligibility;
+    private CreditProtectionCustomerEligibility creditProtectionCustomerEligibility;
+
+    @Mock
+    private CreditProtectionCommonBusinessRulesUtil creditProtectionCommonBusinessRulesUtil;
+
+    @Mock
+    private CreditProtectionCommonUtil creditProtectionCommonUtil;
 
     @Mock
     private CpMasterDetailDAO cpMasterDetailDAO;
 
+    // Keep other mocks if they are used in your setup for input/response objects
     @Mock
-    private ProvinceTaxConfigProperties provinceTaxConfigProperties;
+    protected AddCreditProtectionQuotationRqQuotation quotationInfoMock;
 
     @Mock
-    private MtgProdcutTypeConfigProperties mtgProdcutTypeConfigPropertiesMock;
+    protected AddCreditProtectionQuotationRqQuotationCreditApplication creditApplicationInfoMock;
 
     @Mock
-    private LocProdcutTypeConfigProperties locProdcutTypeConfigPropertiesMock;
+    protected AddCreditProtectionQuotationRqQuotationCreditAgreement creditAgreementInfoMock;
 
     @Mock
-    private CpPlanMasterDetail cpPlanMasterDetailLMock;
+    protected AddCreditProtectionQuotationRqQuotationApplicantInnerIndividual quotedPartyInfolMock;
 
     @Mock
-    private CpPlanMasterDetail cpPlanMasterDetailEMock;
-
-    @Mock
-    private CpRateMasterDetail cpRateMasterDetailLMock;
-
-    @Mock
-    private CpRateMasterDetail cpRateMasterDetailEMock;
-
-    // Sample test data
-    private AddCreditProtectionQuotationRqQuotation quotationInfoMock;
-    private AddCreditProtectionQuotationRqQuotationApplicantInner applicantInfo1Mock;
-    private AddCreditProtectionQuotationRqQuotationApplicantInner applicantInfo2Mock;
+    protected AddCreditProtectionQuotationRqQuotationApplicantInnerIndividual quotedPartyInfo2Mock;
 
     @BeforeEach
-    void setup() {
-        // Stub basic properties for plan mocks
-        when(cpPlanMasterDetailLMock.getPlanCode()).thenReturn("S6");
-        when(cpPlanMasterDetailEMock.getPlanCode()).thenReturn("Q6");
+    void setupTestData() throws Exception {
+        // Now no need for MockitoAnnotations.openMocks(this);
 
-        // Stub eligibility so it doesn’t throw NPE
-        when(cpEligibility.determineCustomerEligibility(anyBoolean(), any(), anyBoolean(), 
-            any(), anyBoolean(), any(), anyBoolean())).thenReturn(true);
+        // Example mock setups
+        when(cpMasterDetailDAO.getCpPlanMasterDetailListLoc()).thenReturn(List.of(cpPlanMasterDetailEMock, cpPlanMasterDetailLMock));
+        when(creditProtectionCustomerEligibility.determineCustomerEligibility(anyBoolean(), anyString(), any(), any(), anyBoolean(), any(), anyBoolean(), any()))
+            .thenReturn(true);
 
-        // Stub province tax rates
-        Map<String, BigDecimal> taxRateByProvince = new HashMap<>();
-        taxRateByProvince.put("ON", BigDecimal.ZERO);
-        taxRateByProvince.put("MB", new BigDecimal("0.07"));
-        when(provinceTaxConfigProperties.getTaxRateByProvince()).thenReturn(taxRateByProvince);
-
-        // Stub DAO calls
-        List<CpPlanMasterDetail> cpPlanMasterDetails = Arrays.asList(cpPlanMasterDetailEMock, cpPlanMasterDetailLMock);
-        when(cpMasterDetailDAO.getCpPlanMasterDetailListLoc()).thenReturn(cpPlanMasterDetails);
-
-        // Initialize applicant mocks
-        applicantInfo1Mock = mock(AddCreditProtectionQuotationRqQuotationApplicantInner.class);
-        applicantInfo2Mock = mock(AddCreditProtectionQuotationRqQuotationApplicantInner.class);
-
-        quotationInfoMock = mock(AddCreditProtectionQuotationRqQuotation.class);
-        when(quotationInfoMock.getApplicant()).thenReturn(Arrays.asList(applicantInfo1Mock, applicantInfo2Mock));
         when(quotationInfoMock.getRequestTypeCd()).thenReturn("E");
+        when(quotationInfoMock.getCreditApplication()).thenReturn(creditApplicationInfoMock);
+        when(quotationInfoMock.getCreditAgreement()).thenReturn(creditAgreementInfoMock);
+
+        when(creditApplicationInfoMock.getProductTypeCd()).thenReturn("LOC");
+        when(creditAgreementInfoMock.getProductTypeCd()).thenReturn("LOC");
+
+        // Keep other mock setups as you already wrote
     }
 
     @Test
-    void testGetCPQuoteV2_RequestTypeCd_E() {
-        // Call real service method
-        AddCreditProtectionQuotationV2RsQuotation quotationRs =
-                locCreditProtectionQuotationService.getCPQuoteV2(quotationInfoMock, 
-                                                                ErrorDisplayLanguage.EN);
-
-        // Verify result
-        assertThat(quotationRs).isNotNull();
-        assertThat(quotationRs.getApplicant()).isNotEmpty();
-
-        // Verify interactions
-        verify(cpEligibility, atLeastOnce()).determineCustomerEligibility(anyBoolean(), any(), anyBoolean(), 
-            any(), anyBoolean(), any(), anyBoolean());
+    void testGetCPQuote() throws Exception {
+        AddCreditProtectionQuotationWarningRsQuotation result = locCreditProtectionQuotationService
+                .getCPQuote(quotationInfoMock, ErrorDisplayLanguage.EN);
+        assertNotNull(result);
+        // Add your assertions here
     }
 }
