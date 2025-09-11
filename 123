@@ -1,52 +1,5 @@
-import com.fasterxml.jackson.dataformat.xml.XmlMapper;
-import com.fasterxml.jackson.dataformat.xml.ser.ToXmlGenerator;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.http.HttpOutputMessage;
-import org.springframework.http.converter.HttpMessageNotWritableException;
-import org.springframework.http.converter.xml.MappingJackson2XmlHttpMessageConverter;
-
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-
-@Configuration
-public class JacksonXmlConfig {
-
-    @Bean
-    public MappingJackson2XmlHttpMessageConverter xmlConverter(IgnoreStringModule ignoreStringModule) {
-        XmlMapper mapper = new XmlMapper();
-        mapper.enable(ToXmlGenerator.Feature.WRITE_XML_DECLARATION);
-
-        // ✅ Register your custom module
-        mapper.registerModule(ignoreStringModule);
-
-        return new MappingJackson2XmlHttpMessageConverter(mapper) {
-            @Override
-            protected void writeInternal(Object object, HttpOutputMessage outputMessage)
-                    throws IOException, HttpMessageNotWritableException {
-                // 1. Generate XML from Jackson
-                String xml = mapper.writeValueAsString(object);
-
-                // 2. Ensure XML declaration with double quotes
-                if (!xml.startsWith("<?xml")) {
-                    xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" + xml;
-                } else {
-                    // Fix single quotes if Jackson wrote them
-                    xml = xml.replace("<?xml version='1.0' encoding='UTF-8'?>",
-                                      "<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
-                }
-
-                // 3. Expand all self-closing tags <tag/> → <tag></tag>
-                xml = xml.replaceAll("<(\\w+)([^>]*)/>", "<$1$2></$1>");
-
-                // 4. Write final XML
-                outputMessage.getBody().write(xml.getBytes(
-                        outputMessage.getHeaders().getContentType() != null
-                                && outputMessage.getHeaders().getContentType().getCharset() != null
-                        ? outputMessage.getHeaders().getContentType().getCharset()
-                        : StandardCharsets.UTF_8
-                ));
-            }
-        };
-    }
-}
+when(util.getValueOrDefault(any(), any())).thenAnswer(inv -> {
+    Object value = inv.getArgument(0);
+    Object defaultVal = inv.getArgument(1);
+    return value != null ? value : defaultVal;
+});
