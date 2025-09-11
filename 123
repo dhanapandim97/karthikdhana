@@ -1,10 +1,31 @@
-@ExtendWith(MockitoExtension.class) // replaces openMocks
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
+import static org.junit.jupiter.api.Assertions.*;
+
+import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+@ExtendWith(MockitoExtension.class)
 class LOCCreditProtectionQuotationServiceTest {
 
+    private static final Logger logger = LoggerFactory.getLogger(LOCCreditProtectionQuotationServiceTest.class);
+
+    // === Service under test ===
     @InjectMocks
     private LOCCreditProtectionQuotationService locCreditProtectionQuotationService;
 
-    // Only mocks that match service fields
+    // === Service dependencies (real fields in service) ===
     @Mock
     private CreditProtectionCustomerEligibility creditProtectionCustomerEligibility;
 
@@ -17,46 +38,117 @@ class LOCCreditProtectionQuotationServiceTest {
     @Mock
     private CpMasterDetailDAO cpMasterDetailDAO;
 
-    // Keep other mocks if they are used in your setup for input/response objects
+    // === Input / response mocks ===
     @Mock
-    protected AddCreditProtectionQuotationRqQuotation quotationInfoMock;
+    private AddCreditProtectionQuotationRqQuotation quotationInfoMock;
 
     @Mock
-    protected AddCreditProtectionQuotationRqQuotationCreditApplication creditApplicationInfoMock;
+    private AddCreditProtectionQuotationRqQuotationCreditApplication creditApplicationInfoMock;
 
     @Mock
-    protected AddCreditProtectionQuotationRqQuotationCreditAgreement creditAgreementInfoMock;
+    private AddCreditProtectionQuotationRqQuotationCreditAgreement creditAgreementInfoMock;
 
     @Mock
-    protected AddCreditProtectionQuotationRqQuotationApplicantInnerIndividual quotedPartyInfolMock;
+    private AddCreditProtectionQuotationRqQuotationApplicantInnerIndividual quotedPartyInfolMock;
 
     @Mock
-    protected AddCreditProtectionQuotationRqQuotationApplicantInnerIndividual quotedPartyInfo2Mock;
+    private AddCreditProtectionQuotationRqQuotationApplicantInnerIndividual quotedPartyInfo2Mock;
 
+    @Mock
+    private CpPlanMasterDetail cpPlanMasterDetailLMock;
+
+    @Mock
+    private CpPlanMasterDetail cpPlanMasterDetailEMock;
+
+    @Mock
+    private CpRateMasterDetail cpRateMasterDetailLMock;
+
+    @Mock
+    private CpRateMasterDetail cpRateMasterDetailEMock;
+
+    @Mock
+    private ProvinceTaxConfigProperties provinceTaxConfigPropertiesMock;
+
+    @Mock
+    private MtgProdcutTypeConfigProperties mtgProdcutTypeConfigPropertiesMock;
+
+    @Mock
+    private LocProdcutTypeConfigProperties locProdcutTypeConfigPropertiesMock;
+
+    // === Static test data ===
+    private static final HashMap<String, BigDecimal> taxRateByProvince = new HashMap<>() {{
+        put("AB", BigDecimal.valueOf(0.00));
+        put("BC", BigDecimal.valueOf(0.00));
+        put("MB", BigDecimal.valueOf(0.07));
+        put("NB", BigDecimal.valueOf(0.00));
+        put("NL", BigDecimal.valueOf(0.08));
+        put("NS", BigDecimal.valueOf(0.09));
+        put("NT", BigDecimal.valueOf(0.00));
+        put("NU", BigDecimal.valueOf(0.06));
+        put("ON", BigDecimal.valueOf(0.00));
+        put("QC", BigDecimal.valueOf(0.08));
+        put("PE", BigDecimal.valueOf(0.09));
+        put("SK", BigDecimal.valueOf(0.00));
+        put("YT", BigDecimal.valueOf(0.00));
+    }};
+
+    private static final HashMap<Integer, String> locQuotationPackage = new HashMap<>() {{
+        put(1, "L");
+        put(2, "L,E");
+    }};
+
+    private static final HashMap<String, BigDecimal> locMultiInsuredDiscount = new HashMap<>() {{
+        put("LOC", BigDecimal.valueOf(0.25));
+    }};
+
+    // === Setup mocks ===
     @BeforeEach
     void setupTestData() throws Exception {
-        // Now no need for MockitoAnnotations.openMocks(this);
 
-        // Example mock setups
-        when(cpMasterDetailDAO.getCpPlanMasterDetailListLoc()).thenReturn(List.of(cpPlanMasterDetailEMock, cpPlanMasterDetailLMock));
-        when(creditProtectionCustomerEligibility.determineCustomerEligibility(anyBoolean(), anyString(), any(), any(), anyBoolean(), any(), anyBoolean(), any()))
-            .thenReturn(true);
+        // Mock DAO return
+        when(cpMasterDetailDAO.getCpPlanMasterDetailListLoc())
+                .thenReturn(List.of(cpPlanMasterDetailEMock, cpPlanMasterDetailLMock));
 
+        // Example eligibility mock
+        when(creditProtectionCustomerEligibility.determineCustomerEligibility(anyBoolean(), anyString(), any(),
+                any(), anyBoolean(), any(), anyBoolean(), any())).thenReturn(true);
+
+        // Mock input request
         when(quotationInfoMock.getRequestTypeCd()).thenReturn("E");
         when(quotationInfoMock.getCreditApplication()).thenReturn(creditApplicationInfoMock);
         when(quotationInfoMock.getCreditAgreement()).thenReturn(creditAgreementInfoMock);
 
+        // Credit application details
         when(creditApplicationInfoMock.getProductTypeCd()).thenReturn("LOC");
-        when(creditAgreementInfoMock.getProductTypeCd()).thenReturn("LOC");
+        when(creditApplicationInfoMock.getLoanAmt()).thenReturn(new BigDecimal("600000.00"));
+        when(creditApplicationInfoMock.getTermMonthCnt()).thenReturn(60);
+        when(creditApplicationInfoMock.getPaymentFrequencycd()).thenReturn("M");
+        when(creditApplicationInfoMock.getCreditSecurityTypeCd()).thenReturn("S");
 
-        // Keep other mock setups as you already wrote
+        // Credit agreement details
+        when(creditAgreementInfoMock.getProductTypeCd()).thenReturn("LOC");
+        when(creditAgreementInfoMock.getLoanAmt()).thenReturn(new BigDecimal("600000.00"));
+        when(creditAgreementInfoMock.getTermMonthCnt()).thenReturn(60);
+        when(creditAgreementInfoMock.getPaymentFrequencycd()).thenReturn("M");
+        when(creditAgreementInfoMock.getCreditBalanceAmt()).thenReturn(new BigDecimal("600000.00"));
+
+        // Mock tax & config
+        when(provinceTaxConfigPropertiesMock.getTaxRateByProvince()).thenReturn(taxRateByProvince);
+        when(mtgProdcutTypeConfigPropertiesMock.getMtgQuotationPackage()).thenReturn(locQuotationPackage);
+        when(mtgProdcutTypeConfigPropertiesMock.getMtgMultiInsuredDiscount()).thenReturn(locMultiInsuredDiscount);
+        when(locProdcutTypeConfigPropertiesMock.getLocQuotationPackage()).thenReturn(locQuotationPackage);
+        when(locProdcutTypeConfigPropertiesMock.getLocMultiInsuredDiscount()).thenReturn(locMultiInsuredDiscount);
+
+        // You can continue to add more mocks for applicant/quotationItem if needed
     }
 
+    // === Sample test ===
     @Test
     void testGetCPQuote() throws Exception {
-        AddCreditProtectionQuotationWarningRsQuotation result = locCreditProtectionQuotationService
-                .getCPQuote(quotationInfoMock, ErrorDisplayLanguage.EN);
+        AddCreditProtectionQuotationWarningRsQuotation result =
+                locCreditProtectionQuotationService.getCPQuote(quotationInfoMock, ErrorDisplayLanguage.EN);
+
         assertNotNull(result);
-        // Add your assertions here
+        // Add additional assertions here for applicants, coverage, etc.
     }
 }
