@@ -1,5 +1,97 @@
-when(util.getValueOrDefault(any(), any())).thenAnswer(inv -> {
-    Object value = inv.getArgument(0);
-    Object defaultVal = inv.getArgument(1);
-    return value != null ? value : defaultVal;
-});
+import static org.mockito.Mockito.*;
+import static org.assertj.core.api.Assertions.*;
+
+import java.math.BigDecimal;
+import java.util.*;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.*;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+@ExtendWith(MockitoExtension.class)
+class LOCCreditProtectionQuotationServiceTest {
+
+    // Service under test
+    @InjectMocks
+    private LOCCreditProtectionQuotationService locCreditProtectionQuotationService;
+
+    // Dependencies
+    @Mock
+    private CreditProtectionCustomerEligibility cpEligibility;
+
+    @Mock
+    private CpMasterDetailDAO cpMasterDetailDAO;
+
+    @Mock
+    private ProvinceTaxConfigProperties provinceTaxConfigProperties;
+
+    @Mock
+    private MtgProdcutTypeConfigProperties mtgProdcutTypeConfigPropertiesMock;
+
+    @Mock
+    private LocProdcutTypeConfigProperties locProdcutTypeConfigPropertiesMock;
+
+    @Mock
+    private CpPlanMasterDetail cpPlanMasterDetailLMock;
+
+    @Mock
+    private CpPlanMasterDetail cpPlanMasterDetailEMock;
+
+    @Mock
+    private CpRateMasterDetail cpRateMasterDetailLMock;
+
+    @Mock
+    private CpRateMasterDetail cpRateMasterDetailEMock;
+
+    // Sample test data
+    private AddCreditProtectionQuotationRqQuotation quotationInfoMock;
+    private AddCreditProtectionQuotationRqQuotationApplicantInner applicantInfo1Mock;
+    private AddCreditProtectionQuotationRqQuotationApplicantInner applicantInfo2Mock;
+
+    @BeforeEach
+    void setup() {
+        // Stub basic properties for plan mocks
+        when(cpPlanMasterDetailLMock.getPlanCode()).thenReturn("S6");
+        when(cpPlanMasterDetailEMock.getPlanCode()).thenReturn("Q6");
+
+        // Stub eligibility so it doesn’t throw NPE
+        when(cpEligibility.determineCustomerEligibility(anyBoolean(), any(), anyBoolean(), 
+            any(), anyBoolean(), any(), anyBoolean())).thenReturn(true);
+
+        // Stub province tax rates
+        Map<String, BigDecimal> taxRateByProvince = new HashMap<>();
+        taxRateByProvince.put("ON", BigDecimal.ZERO);
+        taxRateByProvince.put("MB", new BigDecimal("0.07"));
+        when(provinceTaxConfigProperties.getTaxRateByProvince()).thenReturn(taxRateByProvince);
+
+        // Stub DAO calls
+        List<CpPlanMasterDetail> cpPlanMasterDetails = Arrays.asList(cpPlanMasterDetailEMock, cpPlanMasterDetailLMock);
+        when(cpMasterDetailDAO.getCpPlanMasterDetailListLoc()).thenReturn(cpPlanMasterDetails);
+
+        // Initialize applicant mocks
+        applicantInfo1Mock = mock(AddCreditProtectionQuotationRqQuotationApplicantInner.class);
+        applicantInfo2Mock = mock(AddCreditProtectionQuotationRqQuotationApplicantInner.class);
+
+        quotationInfoMock = mock(AddCreditProtectionQuotationRqQuotation.class);
+        when(quotationInfoMock.getApplicant()).thenReturn(Arrays.asList(applicantInfo1Mock, applicantInfo2Mock));
+        when(quotationInfoMock.getRequestTypeCd()).thenReturn("E");
+    }
+
+    @Test
+    void testGetCPQuoteV2_RequestTypeCd_E() {
+        // Call real service method
+        AddCreditProtectionQuotationV2RsQuotation quotationRs =
+                locCreditProtectionQuotationService.getCPQuoteV2(quotationInfoMock, 
+                                                                ErrorDisplayLanguage.EN);
+
+        // Verify result
+        assertThat(quotationRs).isNotNull();
+        assertThat(quotationRs.getApplicant()).isNotEmpty();
+
+        // Verify interactions
+        verify(cpEligibility, atLeastOnce()).determineCustomerEligibility(anyBoolean(), any(), anyBoolean(), 
+            any(), anyBoolean(), any(), anyBoolean());
+    }
+}
