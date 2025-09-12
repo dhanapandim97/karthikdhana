@@ -3,11 +3,14 @@ void testGetAccessToken_ApiConfigException() {
     try (MockedConstruction<OAuthRequestBuilder> mocked = 
              Mockito.mockConstruction(OAuthRequestBuilder.class,
                  (mock, context) -> {
-                     // every chained call returns the same mock
-                     when(mock.withClientCredentialsRequest()).thenReturn(mock);
-                     when(mock.endClientCredentialsRequest()).thenReturn(mock);
+                     // mock the nested builder type
+                     var nestedBuilder = Mockito.mock(OAuthRequestBuilder.OAuthClientRequestOAuthClientRequestBuilder.class);
 
-                     // force exception on build
+                     // stub the chaining correctly
+                     when(mock.withClientCredentialsRequest()).thenReturn(nestedBuilder);
+                     when(nestedBuilder.endClientCredentialsRequest()).thenReturn(mock);
+
+                     // final build() throws the exception
                      when(mock.build()).thenThrow(new ApiConfigException("bad"));
                  })) {
 
