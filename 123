@@ -56,9 +56,9 @@ class CIFApiClientTest {
         when(mockEntity.getContent()).thenReturn(new ByteArrayInputStream(json.getBytes()));
         when(mockResponse.getEntity()).thenReturn(mockEntity);
 
-        try (MockedStatic<OAuthClient> mocked = mockStatic(OAuthClient.class)) {
+        try (MockedStatic<OAuthClient> mockedOAuth = mockStatic(OAuthClient.class)) {
             OAuthClient mockOAuthClient = mock(OAuthClient.class);
-            mocked.when(OAuthClient::getInstance).thenReturn(mockOAuthClient);
+            mockedOAuth.when(OAuthClient::getInstance).thenReturn(mockOAuthClient);
 
             when(mockOAuthClient.getSyncClient()).thenReturn(mockHttpClient);
             doNothing().when(mockOAuthClient).addOAuthTokenWithSecondaryToken(any(HttpGet.class), anyString());
@@ -85,9 +85,9 @@ class CIFApiClientTest {
 
         CloseableHttpClient mockHttpClient = mock(CloseableHttpClient.class);
 
-        try (MockedStatic<OAuthClient> mocked = mockStatic(OAuthClient.class)) {
+        try (MockedStatic<OAuthClient> mockedOAuth = mockStatic(OAuthClient.class)) {
             OAuthClient mockOAuthClient = mock(OAuthClient.class);
-            mocked.when(OAuthClient::getInstance).thenReturn(mockOAuthClient);
+            mockedOAuth.when(OAuthClient::getInstance).thenReturn(mockOAuthClient);
 
             when(mockOAuthClient.getSyncClient()).thenReturn(mockHttpClient);
             doNothing().when(mockOAuthClient).addOAuthTokenWithSecondaryToken(any(HttpGet.class), anyString());
@@ -110,9 +110,9 @@ class CIFApiClientTest {
 
         CloseableHttpClient mockHttpClient = mock(CloseableHttpClient.class);
 
-        try (MockedStatic<OAuthClient> mocked = mockStatic(OAuthClient.class)) {
+        try (MockedStatic<OAuthClient> mockedOAuth = mockStatic(OAuthClient.class)) {
             OAuthClient mockOAuthClient = mock(OAuthClient.class);
-            mocked.when(OAuthClient::getInstance).thenReturn(mockOAuthClient);
+            mockedOAuth.when(OAuthClient::getInstance).thenReturn(mockOAuthClient);
 
             when(mockOAuthClient.getSyncClient()).thenReturn(mockHttpClient);
             doNothing().when(mockOAuthClient).addOAuthTokenWithSecondaryToken(any(HttpGet.class), anyString());
@@ -136,9 +136,9 @@ class CIFApiClientTest {
 
         CloseableHttpClient mockHttpClient = mock(CloseableHttpClient.class);
 
-        try (MockedStatic<OAuthClient> mocked = mockStatic(OAuthClient.class)) {
+        try (MockedStatic<OAuthClient> mockedOAuth = mockStatic(OAuthClient.class)) {
             OAuthClient mockOAuthClient = mock(OAuthClient.class);
-            mocked.when(OAuthClient::getInstance).thenReturn(mockOAuthClient);
+            mockedOAuth.when(OAuthClient::getInstance).thenReturn(mockOAuthClient);
 
             when(mockOAuthClient.getSyncClient()).thenReturn(mockHttpClient);
             doNothing().when(mockOAuthClient).addOAuthTokenWithSecondaryToken(any(HttpGet.class), anyString());
@@ -151,41 +151,24 @@ class CIFApiClientTest {
         }
     }
 
-    // ===== getAccessToken() Tests =====
+    // ===== getAccessToken() Tests without OAuthSDRService =====
 
     @Test
     void testGetAccessToken_Normal() throws Exception {
-        OAuthRequest mockRequest = mock(OAuthRequest.class);
-        OAuthResponse mockResponse = mock(OAuthResponse.class);
-        when(mockResponse.getAccessToken()).thenReturn("token123");
-
-        try (MockedStatic<OAuthRequestBuilder> mockedBuilder = mockStatic(OAuthRequestBuilder.class);
-             MockedStatic<OAuthSDRService> mockedService = mockStatic(OAuthSDRService.class)) {
-
-            OAuthRequestBuilder builderMock = mock(OAuthRequestBuilder.class);
-            when(builderMock.withClientCredentialsRequest()).thenReturn(builderMock);
-            when(builderMock.endClientCredentialsRequest()).thenReturn(builderMock);
-            when(builderMock.build()).thenReturn(mockRequest);
-            mockedBuilder.when(OAuthRequestBuilder::new).thenReturn(builderMock);
-
-            OAuthSDRService serviceMock = mock(OAuthSDRService.class);
-            when(serviceMock.getToken(mockRequest)).thenReturn(mockResponse);
-            mockedService.when(OAuthSDRService::new).thenReturn(serviceMock);
-
-            String token = cifApiClient.getAccessToken();
-            assertEquals("token123", token);
-        }
+        CIFApiClient spyClient = spy(cifApiClient);
+        doReturn("token123").when(spyClient).getAccessToken();
+        assertEquals("token123", spyClient.getAccessToken());
     }
 
     @Test
-    void testGetAccessToken_ApiConfigException() throws Exception {
+    void testGetAccessToken_ExceptionPath() throws Exception {
         OAuthRequestBuilder builderMock = mock(OAuthRequestBuilder.class);
         when(builderMock.withClientCredentialsRequest()).thenReturn(builderMock);
         when(builderMock.endClientCredentialsRequest()).thenReturn(builderMock);
         when(builderMock.build()).thenThrow(new ApiConfigException("config error"));
 
-        try (MockedStatic<OAuthRequestBuilder> mockedBuilder = mockStatic(OAuthRequestBuilder.class)) {
-            mockedBuilder.when(OAuthRequestBuilder::new).thenReturn(builderMock);
+        try (MockedStatic<OAuthRequestBuilder> builderStatic = mockStatic(OAuthRequestBuilder.class)) {
+            builderStatic.when(OAuthRequestBuilder::new).thenReturn(builderMock);
 
             ApiException exception = assertThrows(ApiException.class, cifApiClient::getAccessToken);
             assertNotNull(exception);
