@@ -1,12 +1,44 @@
-@Test
-void testDoFilter_AsyncDispatcher() throws IOException, ServletException {
-    when(request.getDispatcherType()).thenReturn(DispatcherType.ASYNC);
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.Query;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mockito.Mock;
+import org.mockito.MockitoAnnotations;
 
-    filter.doFilter(request, response, chain);
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.Mockito.*;
 
-    // verify filter chain is still called
-    verify(chain, times(1)).doFilter(request, response);
+class SequenceValueGetterTest {
 
-    // ensure MDC was not populated
-    assert MDC.get(TraceabilityIdFilter.MDC_TRACEABILITY_ID) == null;
+    private SequenceValueGetter sequenceValueGetter;
+
+    @Mock
+    private EntityManager entityManager;
+
+    @Mock
+    private Query query;
+
+    @BeforeEach
+    void setUp() {
+        MockitoAnnotations.openMocks(this);
+        sequenceValueGetter = new SequenceValueGetter();
+        // inject mock EntityManager
+        sequenceValueGetter.entityManager = entityManager;
+    }
+
+    @Test
+    void testGetID() {
+        String sequenceName = "MY_SEQUENCE";
+
+        when(entityManager.createNativeQuery("SELECT NEXT VALUE FOR " + sequenceName, Long.class))
+                .thenReturn(query);
+        when(query.getSingleResult()).thenReturn(123L);
+
+        Long result = sequenceValueGetter.getID(sequenceName);
+
+        assertEquals(123L, result);
+        verify(entityManager, times(1))
+                .createNativeQuery("SELECT NEXT VALUE FOR " + sequenceName, Long.class);
+        verify(query, times(1)).getSingleResult();
+    }
 }
