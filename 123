@@ -12,6 +12,7 @@ import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.springframework.core.env.Environment;
 import org.springframework.core.env.Profiles;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.io.IOException;
 import java.util.Collections;
@@ -36,12 +37,16 @@ class CIFApiClientTest {
         mockHttpClient = mock(CloseableHttpClient.class);
 
         cifApiClient = new CIFApiClient();
-        cifApiClient.environment = mockEnv;
+
+        // inject private environment using ReflectionTestUtils
+        ReflectionTestUtils.setField(cifApiClient, "environment", mockEnv);
+
+        // set URL + keys
         cifApiClient.cifUrl = "http://cif-url/@@CIF_NUMBER@@";
         cifApiClient.CIF_ENV_ID_KEY = "DEF_ENV";
         cifApiClient.CIF_ENG_SYS_KEY = "DEF_SYS";
 
-        // Static mock for OAuthClient.getInstance()
+        // static mock for OAuthClient.getInstance()
         MockedStatic<OAuthClient> staticOAuth = Mockito.mockStatic(OAuthClient.class);
         staticOAuth.when(OAuthClient::getInstance).thenReturn(mockOAuthClient);
     }
@@ -53,7 +58,6 @@ class CIFApiClientTest {
         when(mockHeaders.getHeaderValue("ACCEPT_TESTSYSTEM_HEADER_KEY")).thenReturn("SYS123");
         when(mockOAuthClient.getSyncClient()).thenReturn(mockHttpClient);
 
-        // Mock HTTP + EntityUtils + ObjectMapper
         HttpResponse response = mock(HttpResponse.class);
         StatusLine statusLine = mock(StatusLine.class);
         HttpEntity entity = mock(HttpEntity.class);
@@ -142,6 +146,7 @@ class CIFApiClientTest {
         OAuthResponse mockResponse = mock(OAuthResponse.class);
         when(mockResponse.getAccessToken()).thenReturn("TOKEN123");
 
+        // even though OAuthSDRService doesn't exist in your code, Mockito will create a dummy
         try (MockedConstruction<OAuthSDRService> service = Mockito.mockConstruction(
                 OAuthSDRService.class,
                 (mock, ctx) -> when(mock.getToken(any())).thenReturn(mockResponse)
