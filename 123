@@ -1,4 +1,7 @@
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.http.HttpEntity;
+import org.apache.http.HttpResponse;
+import org.apache.http.StatusLine;
 import org.apache.http.client.ResponseHandler;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.impl.client.CloseableHttpClient;
@@ -9,6 +12,7 @@ import org.springframework.core.env.Environment;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 class CIFApiClientTest {
@@ -38,10 +42,6 @@ class CIFApiClientTest {
 
         CloseableHttpClient mockHttpClient = mock(CloseableHttpClient.class);
 
-        // Spy CIFApiClient
-        CIFApiClient spyClient = spy(cifApiClient);
-
-        // Mock OAuthClient
         try (MockedStatic<OAuthClient> mockedOAuth = mockStatic(OAuthClient.class)) {
             OAuthClient mockOAuthClient = mock(OAuthClient.class);
             mockedOAuth.when(OAuthClient::getInstance).thenReturn(mockOAuthClient);
@@ -49,12 +49,28 @@ class CIFApiClientTest {
             when(mockOAuthClient.getSyncClient()).thenReturn(mockHttpClient);
             doNothing().when(mockOAuthClient).addOAuthTokenWithSecondaryToken(any(HttpGet.class), anyString());
 
-            // **Override private getResponseHandler to return desired JSON**
-            doReturn((ResponseHandler<String>) response -> 
-                    "{\"partyToAlternatePartyKey\":[{\"alternateKey\":\"123\"}]}")
-                    .when(spyClient, "getResponseHandler");
+            // Mock execute() to invoke ResponseHandler
+            when(mockHttpClient.execute(any(HttpGet.class), any(ResponseHandler.class)))
+                    .thenAnswer(invocation -> {
+                        ResponseHandler<String> handler = invocation.getArgument(1);
+                        HttpResponse mockResponse = mock(HttpResponse.class);
+                        HttpEntity mockEntity = mock(HttpEntity.class);
+                        StatusLine mockStatusLine = mock(StatusLine.class);
+                        when(mockResponse.getStatusLine()).thenReturn(mockStatusLine);
+                        when(mockStatusLine.getStatusCode()).thenReturn(200);
+                        when(mockResponse.getEntity()).thenReturn(mockEntity);
 
-            String iiNumber = spyClient.getIINumber(reqHeaders, "12345", "jwt");
+                        // Static mock EntityUtils.toString to return JSON
+                        try (MockedStatic<org.apache.http.util.EntityUtils> entityUtilsMock = mockStatic(org.apache.http.util.EntityUtils.class)) {
+                            String json = "{\"partyToAlternatePartyKey\":[{\"alternateKey\":\"123\"}]}";
+                            entityUtilsMock.when(() -> org.apache.http.util.EntityUtils.toString(any(HttpEntity.class)))
+                                    .thenReturn(json);
+
+                            return handler.handleResponse(mockResponse);
+                        }
+                    });
+
+            String iiNumber = cifApiClient.getIINumber(reqHeaders, "12345", "jwt");
             assertEquals("123", iiNumber);
         }
     }
@@ -68,20 +84,22 @@ class CIFApiClientTest {
         when(reqHeaders.getHeaderValue(anyString())).thenReturn(null);
 
         CloseableHttpClient mockHttpClient = mock(CloseableHttpClient.class);
-        CIFApiClient spyClient = spy(cifApiClient);
 
         try (MockedStatic<OAuthClient> mockedOAuth = mockStatic(OAuthClient.class)) {
             OAuthClient mockOAuthClient = mock(OAuthClient.class);
             mockedOAuth.when(OAuthClient::getInstance).thenReturn(mockOAuthClient);
+
             when(mockOAuthClient.getSyncClient()).thenReturn(mockHttpClient);
             doNothing().when(mockOAuthClient).addOAuthTokenWithSecondaryToken(any(HttpGet.class), anyString());
 
-            // Force exception from ResponseHandler
-            doReturn((ResponseHandler<String>) response -> {
-                throw new RuntimeException("unexpected error");
-            }).when(spyClient, "getResponseHandler");
+            // Force exception from execute -> ResponseHandler
+            when(mockHttpClient.execute(any(HttpGet.class), any(ResponseHandler.class)))
+                    .thenAnswer(invocation -> {
+                        ResponseHandler<String> handler = invocation.getArgument(1);
+                        throw new RuntimeException("CIF API error");
+                    });
 
-            String iiNumber = spyClient.getIINumber(reqHeaders, "12345", "jwt");
+            String iiNumber = cifApiClient.getIINumber(reqHeaders, "12345", "jwt");
             assertEquals(Constants.DEFAULT_II_NUMBER, iiNumber);
         }
     }
@@ -94,7 +112,6 @@ class CIFApiClientTest {
         when(mockEnv.acceptsProfiles("upper-env")).thenReturn(true);
 
         CloseableHttpClient mockHttpClient = mock(CloseableHttpClient.class);
-        CIFApiClient spyClient = spy(cifApiClient);
 
         try (MockedStatic<OAuthClient> mockedOAuth = mockStatic(OAuthClient.class)) {
             OAuthClient mockOAuthClient = mock(OAuthClient.class);
@@ -103,11 +120,26 @@ class CIFApiClientTest {
             when(mockOAuthClient.getSyncClient()).thenReturn(mockHttpClient);
             doNothing().when(mockOAuthClient).addOAuthTokenWithSecondaryToken(any(HttpGet.class), anyString());
 
-            doReturn((ResponseHandler<String>) response -> 
-                    "{\"partyToAlternatePartyKey\":[{\"alternateKey\":\"456\"}]}")
-                    .when(spyClient, "getResponseHandler");
+            // Mock execute -> ResponseHandler
+            when(mockHttpClient.execute(any(HttpGet.class), any(ResponseHandler.class)))
+                    .thenAnswer(invocation -> {
+                        ResponseHandler<String> handler = invocation.getArgument(1);
+                        HttpResponse mockResponse = mock(HttpResponse.class);
+                        HttpEntity mockEntity = mock(HttpEntity.class);
+                        StatusLine mockStatusLine = mock(StatusLine.class);
+                        when(mockResponse.getStatusLine()).thenReturn(mockStatusLine);
+                        when(mockStatusLine.getStatusCode()).thenReturn(200);
+                        when(mockResponse.getEntity()).thenReturn(mockEntity);
 
-            String iiNumber = spyClient.getIINumber(reqHeaders, "67890", "jwt");
+                        try (MockedStatic<org.apache.http.util.EntityUtils> entityUtilsMock = mockStatic(org.apache.http.util.EntityUtils.class)) {
+                            String json = "{\"partyToAlternatePartyKey\":[{\"alternateKey\":\"456\"}]}";
+                            entityUtilsMock.when(() -> org.apache.http.util.EntityUtils.toString(any(HttpEntity.class)))
+                                    .thenReturn(json);
+                            return handler.handleResponse(mockResponse);
+                        }
+                    });
+
+            String iiNumber = cifApiClient.getIINumber(reqHeaders, "67890", "jwt");
             assertEquals("456", iiNumber);
         }
     }
@@ -120,7 +152,6 @@ class CIFApiClientTest {
         when(mockEnv.acceptsProfiles("upper-env")).thenReturn(true);
 
         CloseableHttpClient mockHttpClient = mock(CloseableHttpClient.class);
-        CIFApiClient spyClient = spy(cifApiClient);
 
         try (MockedStatic<OAuthClient> mockedOAuth = mockStatic(OAuthClient.class)) {
             OAuthClient mockOAuthClient = mock(OAuthClient.class);
@@ -129,11 +160,14 @@ class CIFApiClientTest {
             when(mockOAuthClient.getSyncClient()).thenReturn(mockHttpClient);
             doNothing().when(mockOAuthClient).addOAuthTokenWithSecondaryToken(any(HttpGet.class), anyString());
 
-            doReturn((ResponseHandler<String>) response -> {
-                throw new RuntimeException("CIF API failed");
-            }).when(spyClient, "getResponseHandler");
+            // Exception path
+            when(mockHttpClient.execute(any(HttpGet.class), any(ResponseHandler.class)))
+                    .thenAnswer(invocation -> {
+                        ResponseHandler<String> handler = invocation.getArgument(1);
+                        throw new RuntimeException("CIF API failure");
+                    });
 
-            String iiNumber = spyClient.getIINumber(reqHeaders, "67890", "jwt");
+            String iiNumber = cifApiClient.getIINumber(reqHeaders, "67890", "jwt");
             assertEquals(Constants.DEFAULT_II_NUMBER, iiNumber);
         }
     }
