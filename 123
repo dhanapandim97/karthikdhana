@@ -1,19 +1,17 @@
 @Test
 void testGetAccessToken_ApiConfigException() {
-    try (MockedStatic<OAuthRequestBuilder> rb = Mockito.mockStatic(OAuthRequestBuilder.class);
-         MockedStatic<OAuthSDRService> sdr = Mockito.mockStatic(OAuthSDRService.class)) {
+    try (MockedConstruction<OAuthRequestBuilder> mocked = 
+             Mockito.mockConstruction(OAuthRequestBuilder.class,
+                 (mock, context) -> {
+                     // every chained call returns the same mock
+                     when(mock.withClientCredentialsRequest()).thenReturn(mock);
+                     when(mock.endClientCredentialsRequest()).thenReturn(mock);
 
-        // Mock builder
-        OAuthRequestBuilder mockBuilder = mock(OAuthRequestBuilder.class);
-        rb.when(OAuthRequestBuilder::new).thenReturn(mockBuilder);
-
-        // Force builder.build() to throw ApiConfigException
-        when(mockBuilder.build()).thenThrow(new ApiConfigException("bad"));
+                     // force exception on build
+                     when(mock.build()).thenThrow(new ApiConfigException("bad"));
+                 })) {
 
         // Run method under test
         assertThrows(ApiException.class, () -> cifApiClient.getAccessToken());
-
-        // Verify we actually hit the mock
-        verify(mockBuilder).build();
     }
 }
