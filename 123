@@ -1,49 +1,129 @@
-@Test
-void testGetIINumber_LowerEnv_Normal_MockEverything() throws Exception {
-    CIFApiClient spyClient = spy(cifApiClient);
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.http.HttpEntity;
+import org.apache.http.HttpResponse;
+import org.apache.http.StatusLine;
+import org.apache.http.client.ResponseHandler;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mockito.MockedStatic;
+import org.springframework.core.env.Environment;
+import org.springframework.test.util.ReflectionTestUtils;
 
-    // Mock Environment
-    Environment mockEnv = mock(Environment.class);
-    ReflectionTestUtils.setField(spyClient, "environment", mockEnv);
-    when(mockEnv.acceptsProfiles("lower-env")).thenReturn(true);
-    when(mockEnv.acceptsProfiles("upper-env")).thenReturn(false);
-    when(reqHeaders.getHeaderValue(anyString())).thenReturn(null);
+import java.nio.charset.StandardCharsets;
 
-    // Mock CloseableHttpClient
-    CloseableHttpClient mockHttpClient = mock(CloseableHttpClient.class);
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
 
-    // Mock OAuthClient static instance
-    OAuthClient mockOAuthClient = mock(OAuthClient.class);
-    try (MockedStatic<OAuthClient> oauthStatic = mockStatic(OAuthClient.class)) {
-        oauthStatic.when(OAuthClient::getInstance).thenReturn(mockOAuthClient);
-        when(mockOAuthClient.getSyncClient()).thenReturn(mockHttpClient);
-        doNothing().when(mockOAuthClient).addOAuthTokenWithSecondaryToken(any(HttpGet.class), anyString());
+class CIFApiClientTest {
 
-        // Prepare the mock HttpResponse with JSON
-        HttpResponse mockResponse = mock(HttpResponse.class);
-        HttpEntity mockEntity = mock(HttpEntity.class);
-        StatusLine mockStatusLine = mock(StatusLine.class);
-        when(mockResponse.getStatusLine()).thenReturn(mockStatusLine);
-        when(mockStatusLine.getStatusCode()).thenReturn(200);
-        when(mockResponse.getEntity()).thenReturn(mockEntity);
+    private CIFApiClient cifApiClient;
+    private QuoteRequestHeaders reqHeaders;
 
-        // Mock EntityUtils to return JSON string
-        try (MockedStatic<org.apache.http.util.EntityUtils> entityUtilsMock = mockStatic(org.apache.http.util.EntityUtils.class)) {
-            entityUtilsMock.when(() -> org.apache.http.util.EntityUtils.toString(mockEntity))
-                    .thenReturn("{\"partyToAlternatePartyKey\":[{\"alternateKey\":\"123\"}]}");
+    @BeforeEach
+    void setUp() {
+        cifApiClient = new CIFApiClient();
+        cifApiClient.cifUrl = "http://dummy.url/@@CIF NUMBER@@";
+        cifApiClient.CIF_ENV_ID_KEY = "ENV_ID";
+        cifApiClient.CIF_ENG_SYS_KEY = "ENV_SYS";
 
-            // Mock execute() to call ResponseHandler with our mockResponse
+        reqHeaders = mock(QuoteRequestHeaders.class);
+    }
+
+    private HttpResponse createMockResponse(String json) throws Exception {
+        HttpResponse response = mock(HttpResponse.class);
+        HttpEntity entity = mock(HttpEntity.class);
+        StatusLine statusLine = mock(StatusLine.class);
+        when(response.getStatusLine()).thenReturn(statusLine);
+        when(statusLine.getStatusCode()).thenReturn(200);
+        when(response.getEntity()).thenReturn(entity);
+
+        // EntityUtils.toString() will return our JSON
+        MockedStatic<org.apache.http.util.EntityUtils> entityUtilsMock = mockStatic(org.apache.http.util.EntityUtils.class);
+        entityUtilsMock.when(() -> org.apache.http.util.EntityUtils.toString(entity))
+                .thenReturn(json);
+        return response;
+    }
+
+    @Test
+    void testGetIINumber_LowerEnv_Normal() throws Exception {
+        Environment mockEnv = mock(Environment.class);
+        ReflectionTestUtils.setField(cifApiClient, "environment", mockEnv);
+        when(mockEnv.acceptsProfiles("lower-env")).thenReturn(true);
+        when(mockEnv.acceptsProfiles("upper-env")).thenReturn(false);
+        when(reqHeaders.getHeaderValue(anyString())).thenReturn(null);
+
+        CloseableHttpClient mockHttpClient = mock(CloseableHttpClient.class);
+
+        try (MockedStatic<OAuthClient> oauthStatic = mockStatic(OAuthClient.class)) {
+            OAuthClient mockOAuthClient = mock(OAuthClient.class);
+            oauthStatic.when(OAuthClient::getInstance).thenReturn(mockOAuthClient);
+            when(mockOAuthClient.getSyncClient()).thenReturn(mockHttpClient);
+            doNothing().when(mockOAuthClient).addOAuthTokenWithSecondaryToken(any(HttpGet.class), anyString());
+
+            HttpResponse mockResponse = createMockResponse("{\"partyToAlternatePartyKey\":[{\"alternateKey\":\"123\"}]}");
+
+            // execute() invokes the ResponseHandler internally
             when(mockHttpClient.execute(any(HttpGet.class), any(ResponseHandler.class)))
                     .thenAnswer(invocation -> {
                         ResponseHandler<String> handler = invocation.getArgument(1);
                         return handler.handleResponse(mockResponse);
                     });
 
-            // Call the method
-            String iiNumber = spyClient.getIINumber(reqHeaders, "12345", "jwt");
-
-            // Assert correct II number is returned
+            String iiNumber = cifApiClient.getIINumber(reqHeaders, "12345", "jwt");
             assertEquals("123", iiNumber);
+        }
+    }
+
+    @Test
+    void testGetIINumber_UpperEnv_Normal() throws Exception {
+        Environment mockEnv = mock(Environment.class);
+        ReflectionTestUtils.setField(cifApiClient, "environment", mockEnv);
+        when(mockEnv.acceptsProfiles("lower-env")).thenReturn(false);
+        when(mockEnv.acceptsProfiles("upper-env")).thenReturn(true);
+
+        CloseableHttpClient mockHttpClient = mock(CloseableHttpClient.class);
+
+        try (MockedStatic<OAuthClient> oauthStatic = mockStatic(OAuthClient.class)) {
+            OAuthClient mockOAuthClient = mock(OAuthClient.class);
+            oauthStatic.when(OAuthClient::getInstance).thenReturn(mockOAuthClient);
+            when(mockOAuthClient.getSyncClient()).thenReturn(mockHttpClient);
+            doNothing().when(mockOAuthClient).addOAuthTokenWithSecondaryToken(any(HttpGet.class), anyString());
+
+            HttpResponse mockResponse = createMockResponse("{\"partyToAlternatePartyKey\":[{\"alternateKey\":\"456\"}]}");
+
+            when(mockHttpClient.execute(any(HttpGet.class), any(ResponseHandler.class)))
+                    .thenAnswer(invocation -> {
+                        ResponseHandler<String> handler = invocation.getArgument(1);
+                        return handler.handleResponse(mockResponse);
+                    });
+
+            String iiNumber = cifApiClient.getIINumber(reqHeaders, "67890", "jwt");
+            assertEquals("456", iiNumber);
+        }
+    }
+
+    @Test
+    void testGetIINumber_ExceptionPath() throws Exception {
+        Environment mockEnv = mock(Environment.class);
+        ReflectionTestUtils.setField(cifApiClient, "environment", mockEnv);
+
+        CloseableHttpClient mockHttpClient = mock(CloseableHttpClient.class);
+
+        try (MockedStatic<OAuthClient> oauthStatic = mockStatic(OAuthClient.class)) {
+            OAuthClient mockOAuthClient = mock(OAuthClient.class);
+            oauthStatic.when(OAuthClient::getInstance).thenReturn(mockOAuthClient);
+            when(mockOAuthClient.getSyncClient()).thenReturn(mockHttpClient);
+            doNothing().when(mockOAuthClient).addOAuthTokenWithSecondaryToken(any(HttpGet.class), anyString());
+
+            // Force exception from execute()
+            when(mockHttpClient.execute(any(HttpGet.class), any(ResponseHandler.class)))
+                    .thenThrow(new RuntimeException("CIF API error"));
+
+            String iiNumber = cifApiClient.getIINumber(reqHeaders, "12345", "jwt");
+            assertEquals(Constants.DEFAULT_II_NUMBER, iiNumber);
         }
     }
 }
