@@ -3,177 +3,163 @@ package com.td.tdi.cp.api.cpqte.cif;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.http.*;
 import org.apache.http.client.ClientProtocolException;
-import org.apache.http.client.ResponseHandler;
 import org.apache.http.client.methods.HttpGet;
+import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.util.EntityUtils;
 import org.junit.jupiter.api.*;
-import org.mockito.MockedConstruction;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.springframework.core.env.Environment;
-import org.springframework.core.env.Profiles;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.io.IOException;
 import java.util.Collections;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 class CIFApiClientTest {
 
+    private static MockedStatic<OAuthClient> oauthClientStatic;
+
     private CIFApiClient cifApiClient;
     private Environment mockEnv;
-    private QuoteRequestHeaders mockHeaders;
     private OAuthClient mockOAuthClient;
     private CloseableHttpClient mockHttpClient;
+    private CloseableHttpResponse mockResponse;
+    private HttpEntity mockEntity;
+    private ObjectMapper mockMapper;
+
+    @BeforeAll
+    static void beforeAll() {
+        // static mock once for all tests
+        oauthClientStatic = Mockito.mockStatic(OAuthClient.class);
+    }
+
+    @AfterAll
+    static void afterAll() {
+        oauthClientStatic.close();
+    }
 
     @BeforeEach
-    void setUp() {
-        mockEnv = mock(Environment.class);
-        mockHeaders = mock(QuoteRequestHeaders.class);
-        mockOAuthClient = mock(OAuthClient.class);
-        mockHttpClient = mock(CloseableHttpClient.class);
-
+    void setUp() throws Exception {
         cifApiClient = new CIFApiClient();
 
-        // inject private environment using ReflectionTestUtils
+        mockEnv = mock(Environment.class);
+        mockOAuthClient = mock(OAuthClient.class);
+        mockHttpClient = mock(CloseableHttpClient.class);
+        mockResponse = mock(CloseableHttpResponse.class);
+        mockEntity = mock(HttpEntity.class);
+        mockMapper = mock(ObjectMapper.class);
+
+        // inject private fields
         ReflectionTestUtils.setField(cifApiClient, "environment", mockEnv);
+        ReflectionTestUtils.setField(cifApiClient, "cifUrl", "http://cif/123");
+        ReflectionTestUtils.setField(cifApiClient, "CIF_ENV_ID_KEY", "EID");
+        ReflectionTestUtils.setField(cifApiClient, "CIF_ENG_SYS_KEY", "ESYS");
 
-        // set URL + keys
-        cifApiClient.cifUrl = "http://cif-url/@@CIF_NUMBER@@";
-        cifApiClient.CIF_ENV_ID_KEY = "DEF_ENV";
-        cifApiClient.CIF_ENG_SYS_KEY = "DEF_SYS";
-
-        // static mock for OAuthClient.getInstance()
-        MockedStatic<OAuthClient> staticOAuth = Mockito.mockStatic(OAuthClient.class);
-        staticOAuth.when(OAuthClient::getInstance).thenReturn(mockOAuthClient);
+        // static mock
+        oauthClientStatic.when(OAuthClient::getInstance).thenReturn(mockOAuthClient);
+        when(mockOAuthClient.getSyncClient()).thenReturn(mockHttpClient);
     }
 
     @Test
     void testGetIINumber_LowerEnv_Normal() throws Exception {
-        when(mockEnv.acceptsProfiles(any(Profiles.class))).thenReturn(true);
-        when(mockHeaders.getHeaderValue("ACCEPT_TESTSET_HEADER_KEY")).thenReturn("ENV123");
-        when(mockHeaders.getHeaderValue("ACCEPT_TESTSYSTEM_HEADER_KEY")).thenReturn("SYS123");
-        when(mockOAuthClient.getSyncClient()).thenReturn(mockHttpClient);
-
-        HttpResponse response = mock(HttpResponse.class);
-        StatusLine statusLine = mock(StatusLine.class);
-        HttpEntity entity = mock(HttpEntity.class);
-        when(statusLine.getStatusCode()).thenReturn(200);
-        when(response.getStatusLine()).thenReturn(statusLine);
-        when(response.getEntity()).thenReturn(entity);
+        QuoteRequestHeaders mockHdrs = mock(QuoteRequestHeaders.class);
+        when(mockEnv.acceptsProfiles(any())).thenReturn(true);
+        when(mockHdrs.getHeaderValue(anyString())).thenReturn("123");
+        when(mockHttpClient.execute(any(HttpGet.class), any())).thenReturn("{\"partyToAlternatePartyKey\":[{\"alternateKey\":\"123\"}]}");
 
         try (MockedStatic<EntityUtils> eu = Mockito.mockStatic(EntityUtils.class)) {
-            eu.when(() -> EntityUtils.toString(entity))
-              .thenReturn("{\"partyToAlternatePartyKey\":[{\"alternateKey\":\"123\"}]}");
+            CIFAPIResponse mockResp = new CIFAPIResponse();
+            PartyToAlternatePartyKey p = new PartyToAlternatePartyKey();
+            p.setAlternateKey("123");
+            mockResp.setPartyToAlternatePartyKey(Collections.singletonList(p));
 
-            when(mockHttpClient.execute(any(HttpGet.class), any(ResponseHandler.class)))
-                .thenAnswer(inv -> {
-                    ResponseHandler<String> handler = inv.getArgument(1);
-                    return handler.handleResponse(response);
-                });
+            when(mockMapper.readValue(anyString(), eq(CIFAPIResponse.class))).thenReturn(mockResp);
+            ReflectionTestUtils.setField(cifApiClient, "log", org.slf4j.LoggerFactory.getLogger("test"));
 
-            try (MockedConstruction<ObjectMapper> om = Mockito.mockConstruction(
-                    ObjectMapper.class,
-                    (mock, ctx) -> when(mock.readValue(anyString(), eq(CIFAPIResponse.class)))
-                            .thenReturn(buildResponse("123"))
-            )) {
-                String result = cifApiClient.getIINumber(mockHeaders, "999", "jwt");
-                assertEquals("123", result);
+            String result = cifApiClient.getIINumber(mockHdrs, "123", "jwt");
+            assertEquals("123", result);
+        }
+    }
+
+    @Test
+    void testGetIINumber_Exception_Default() throws Exception {
+        QuoteRequestHeaders mockHdrs = mock(QuoteRequestHeaders.class);
+        when(mockEnv.acceptsProfiles(any())).thenReturn(true);
+        when(mockHdrs.getHeaderValue(anyString())).thenReturn("123");
+        when(mockHttpClient.execute(any(HttpGet.class), any())).thenThrow(new IOException("boom"));
+
+        String result = cifApiClient.getIINumber(mockHdrs, "123", "jwt");
+        assertEquals(Constants.DEFAULT_II_NUMBER, result);
+    }
+
+    @Test
+    void testGetAccessToken_Success() throws Exception {
+        OAuthRequest req = mock(OAuthRequest.class);
+        OAuthRequestBuilder builder = mock(OAuthRequestBuilder.class);
+        OAuthResponse mockResp = mock(OAuthResponse.class);
+
+        when(mockResp.getAccessToken()).thenReturn("token");
+        // static builder
+        try (MockedStatic<OAuthRequestBuilder> rb = Mockito.mockStatic(OAuthRequestBuilder.class)) {
+            OAuthRequestBuilder b = new OAuthRequestBuilder();
+            rb.when(OAuthRequestBuilder::new).thenReturn(builder);
+
+            when(builder.withClientCredentialsRequest()).thenReturn(builder);
+            when(builder.endClientCredentialsRequest()).thenReturn(builder);
+            when(builder.build()).thenReturn(req);
+
+            try (MockedStatic<OAuthSDRService> sdr = Mockito.mockStatic(OAuthSDRService.class)) {
+                OAuthSDRService mockSrv = mock(OAuthSDRService.class);
+                sdr.when(OAuthSDRService::new).thenReturn(mockSrv);
+                when(mockSrv.getToken(req)).thenReturn(mockResp);
+
+                String token = cifApiClient.getAccessToken();
+                assertEquals("token", token);
             }
         }
     }
 
     @Test
-    void testGetIINumber_UpperEnv() throws Exception {
-        when(mockEnv.acceptsProfiles(any(Profiles.class))).thenReturn(true);
-        when(mockOAuthClient.getSyncClient()).thenReturn(mockHttpClient);
+    void testGetAccessToken_ApiConfigException() {
+        try (MockedStatic<OAuthRequestBuilder> rb = Mockito.mockStatic(OAuthRequestBuilder.class)) {
+            OAuthRequestBuilder builder = mock(OAuthRequestBuilder.class);
+            rb.when(OAuthRequestBuilder::new).thenReturn(builder);
+            when(builder.withClientCredentialsRequest()).thenThrow(new ApiConfigException("bad"));
 
-        HttpResponse response = mock(HttpResponse.class);
-        StatusLine statusLine = mock(StatusLine.class);
-        HttpEntity entity = mock(HttpEntity.class);
-        when(statusLine.getStatusCode()).thenReturn(200);
-        when(response.getStatusLine()).thenReturn(statusLine);
-        when(response.getEntity()).thenReturn(entity);
-
-        try (MockedStatic<EntityUtils> eu = Mockito.mockStatic(EntityUtils.class)) {
-            eu.when(() -> EntityUtils.toString(entity))
-              .thenReturn("{\"partyToAlternatePartyKey\":[{\"alternateKey\":\"ABC999\"}]}");
-
-            when(mockHttpClient.execute(any(HttpGet.class), any(ResponseHandler.class)))
-                .thenAnswer(inv -> {
-                    ResponseHandler<String> handler = inv.getArgument(1);
-                    return handler.handleResponse(response);
-                });
-
-            try (MockedConstruction<ObjectMapper> om = Mockito.mockConstruction(
-                    ObjectMapper.class,
-                    (mock, ctx) -> when(mock.readValue(anyString(), eq(CIFAPIResponse.class)))
-                            .thenReturn(buildResponse("ABC999"))
-            )) {
-                String result = cifApiClient.getIINumber(mockHeaders, "111", "jwt");
-                assertEquals("ABC999", result);
-            }
-        }
-    }
-
-    @Test
-    void testGetIINumber_NotFound404() throws Exception {
-        when(mockEnv.acceptsProfiles(any(Profiles.class))).thenReturn(true);
-        when(mockOAuthClient.getSyncClient()).thenReturn(mockHttpClient);
-        when(mockHttpClient.execute(any(HttpGet.class), any(ResponseHandler.class)))
-            .thenThrow(new ClientProtocolException("404"));
-
-        String result = cifApiClient.getIINumber(mockHeaders, "404", "jwt");
-        assertEquals(Constants.DEFAULT_II_NUMBER, result);
-    }
-
-    @Test
-    void testGetIINumber_GenericException() throws Exception {
-        when(mockEnv.acceptsProfiles(any(Profiles.class))).thenReturn(true);
-        when(mockOAuthClient.getSyncClient()).thenReturn(mockHttpClient);
-        when(mockHttpClient.execute(any(HttpGet.class), any(ResponseHandler.class)))
-            .thenThrow(new IOException("boom"));
-
-        String result = cifApiClient.getIINumber(mockHeaders, "X", "jwt");
-        assertEquals(Constants.DEFAULT_II_NUMBER, result);
-    }
-
-    @Test
-    void testGetAccessToken_Normal() throws Exception {
-        OAuthResponse mockResponse = mock(OAuthResponse.class);
-        when(mockResponse.getAccessToken()).thenReturn("TOKEN123");
-
-        // even though OAuthSDRService doesn't exist in your code, Mockito will create a dummy
-        try (MockedConstruction<OAuthSDRService> service = Mockito.mockConstruction(
-                OAuthSDRService.class,
-                (mock, ctx) -> when(mock.getToken(any())).thenReturn(mockResponse)
-        )) {
-            String token = cifApiClient.getAccessToken();
-            assertEquals("TOKEN123", token);
-        }
-    }
-
-    @Test
-    void testGetAccessToken_ConfigError() {
-        try (MockedConstruction<OAuthRequestBuilder> builder = Mockito.mockConstruction(
-                OAuthRequestBuilder.class,
-                (mock, ctx) -> {
-                    when(mock.withClientCredentialsRequest()).thenThrow(new ApiConfigException("bad"));
-                }
-        )) {
             assertThrows(ApiException.class, () -> cifApiClient.getAccessToken());
         }
     }
 
-    // --- helpers ---
-    private CIFAPIResponse buildResponse(String key) {
-        CIFAPIResponse resp = new CIFAPIResponse();
-        PartyToAlternatePartyKey party = new PartyToAlternatePartyKey();
-        party.setAlternateKey(key);
-        resp.setPartyToAlternatePartyKey(Collections.singletonList(party));
-        return resp;
+    @Test
+    void testGetResponseHandler_Success() throws Exception {
+        ResponseHandler<String> handler = ReflectionTestUtils.invokeMethod(cifApiClient, "getResponseHandler");
+        StatusLine statusLine = mock(StatusLine.class);
+        when(statusLine.getStatusCode()).thenReturn(200);
+        when(mockResponse.getStatusLine()).thenReturn(statusLine);
+        when(mockResponse.getEntity()).thenReturn(mockEntity);
+
+        try (MockedStatic<EntityUtils> eu = Mockito.mockStatic(EntityUtils.class)) {
+            eu.when(() -> EntityUtils.toString(mockEntity)).thenReturn("ok");
+            String res = handler.handleResponse(mockResponse);
+            assertEquals("ok", res);
+        }
+    }
+
+    @Test
+    void testGetResponseHandler_Error() {
+        ResponseHandler<String> handler = ReflectionTestUtils.invokeMethod(cifApiClient, "getResponseHandler");
+        StatusLine statusLine = mock(StatusLine.class);
+        when(statusLine.getStatusCode()).thenReturn(500);
+        when(mockResponse.getStatusLine()).thenReturn(statusLine);
+        when(mockResponse.getEntity()).thenReturn(mockEntity);
+
+        try (MockedStatic<EntityUtils> eu = Mockito.mockStatic(EntityUtils.class)) {
+            eu.when(() -> EntityUtils.toString(mockEntity)).thenReturn("err");
+            assertThrows(ClientProtocolException.class, () -> handler.handleResponse(mockResponse));
+        }
     }
 }
