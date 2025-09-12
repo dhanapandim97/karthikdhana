@@ -1,45 +1,101 @@
-import jakarta.persistence.EntityManager;
-import jakarta.persistence.Query;
+import jakarta.persistence.PersistenceException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
 import org.springframework.test.util.ReflectionTestUtils;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.mockito.Mockito.*;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
 
-class SequenceValueGetterTest {
+import static org.junit.jupiter.api.Assertions.*;
 
-    private SequenceValueGetter sequenceValueGetter;
+class DbUtilTest {
 
-    @Mock
-    private EntityManager entityManager;
-
-    @Mock
-    private Query query;
+    private DbUtil dbUtil;
 
     @BeforeEach
     void setUp() {
-        MockitoAnnotations.openMocks(this);
-        sequenceValueGetter = new SequenceValueGetter();
-        // inject mock into private field
-        ReflectionTestUtils.setField(sequenceValueGetter, "entityManager", entityManager);
+        dbUtil = new DbUtil();
+        // set private values using ReflectionTestUtils
+        ReflectionTestUtils.setField(dbUtil, "DB_CONN_RETRY_DUR_REY", 0); // avoid actual sleep
+        ReflectionTestUtils.setField(dbUtil, "DB_CONN_MAX_RETRY_REY", 2);
+    }
+
+    // ---- retryDbOperation ----
+
+    @Test
+    void testRetryDbOperation_SuccessFirstTry() {
+        boolean result = dbUtil.retryDbOperation(() -> {
+            // no exception
+        });
+        assertTrue(result);
     }
 
     @Test
-    void testGetID() {
-        String sequenceName = "MY_SEQUENCE";
+    void testRetryDbOperation_SuccessAfterRetry() {
+        AtomicInteger counter = new AtomicInteger(0);
+        boolean result = dbUtil.retryDbOperation(() -> {
+            if (counter.getAndIncrement() == 0) {
+                throw new PersistenceException("first fail");
+            }
+        });
+        assertTrue(result);
+    }
 
-        when(entityManager.createNativeQuery("SELECT NEXT VALUE FOR " + sequenceName, Long.class))
-                .thenReturn(query);
-        when(query.getSingleResult()).thenReturn(123L);
+    @Test
+    void testRetryDbOperation_FailureExhaustedRetries() {
+        boolean result = dbUtil.retryDbOperation(() -> {
+            throw new PersistenceException("always fail");
+        });
+        assertFalse(result);
+    }
 
-        Long result = sequenceValueGetter.getID(sequenceName);
+    @Test
+    void testRetryDbOperation_InterruptedDuringSleep() {
+        ReflectionTestUtils.setField(dbUtil, "DB_CONN_RETRY_DUR_REY", 1);
+        Thread.currentThread().interrupt(); // force interrupt
+        boolean result = dbUtil.retryDbOperation(() -> {
+            throw new PersistenceException("force retry");
+        });
+        assertFalse(result);
+        assertTrue(Thread.interrupted()); // reset interrupt flag
+    }
 
-        assertEquals(123L, result);
-        verify(entityManager, times(1))
-                .createNativeQuery("SELECT NEXT VALUE FOR " + sequenceName, Long.class);
-        verify(query, times(1)).getSingleResult();
+    // ---- retryDbQueryOperation ----
+
+    @Test
+    void testRetryDbQueryOperation_SuccessFirstTry() {
+        Object result = dbUtil.retryDbQueryOperation(() -> "value");
+        assertEquals("value", result);
+    }
+
+    @Test
+    void testRetryDbQueryOperation_SuccessAfterRetry() {
+        AtomicInteger counter = new AtomicInteger(0);
+        Object result = dbUtil.retryDbQueryOperation(() -> {
+            if (counter.getAndIncrement() == 0) {
+                throw new PersistenceException("fail once");
+            }
+            return "ok";
+        });
+        assertEquals("ok", result);
+    }
+
+    @Test
+    void testRetryDbQueryOperation_FailureExhaustedRetries() {
+        Object result = dbUtil.retryDbQueryOperation(() -> {
+            throw new PersistenceException("always fail");
+        });
+        assertNull(result);
+    }
+
+    @Test
+    void testRetryDbQueryOperation_InterruptedDuringSleep() {
+        ReflectionTestUtils.setField(dbUtil, "DB_CONN_RETRY_DUR_REY", 1);
+        Thread.currentThread().interrupt(); // force interrupt
+        Object result = dbUtil.retryDbQueryOperation(() -> {
+            throw new PersistenceException("force fail");
+        });
+        assertNull(result);
+        assertTrue(Thread.interrupted()); // reset interrupt flag
     }
 }
