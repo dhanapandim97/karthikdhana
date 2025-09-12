@@ -1,70 +1,88 @@
-import org.aspectj.lang.ProceedingJoinPoint;
-import org.aspectj.lang.Signature;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
+import org.slf4j.MDC;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.FilterConfig;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.ServletRequest;
+import jakarta.servlet.ServletResponse;
+import jakarta.servlet.DispatcherType;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+
+import java.io.IOException;
+
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.Mockito.*;
 
-class LoggingAspectTest {
+class TraceabilityIdFilterTest {
 
-    private LoggingAspect loggingAspect;
-
-    @Mock
-    private ProceedingJoinPoint joinPoint;
+    private TraceabilityIdFilter filter;
 
     @Mock
-    private Signature signature;
+    private HttpServletRequest request;
+
+    @Mock
+    private HttpServletResponse response;
+
+    @Mock
+    private FilterChain chain;
+
+    @Mock
+    private FilterConfig filterConfig;
 
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
-        loggingAspect = new LoggingAspect();
-        loggingAspect.threshold = 50; // default threshold
+        filter = new TraceabilityIdFilter();
     }
 
     @Test
-    void testUserAdvice() throws Throwable {
-        when(joinPoint.getSignature()).thenReturn(signature);
-        when(signature.toString()).thenReturn("mockSignature");
-        when(joinPoint.proceed()).thenReturn("mockReturn");
-
-        Object result = loggingAspect.userAdvice(joinPoint);
-
-        assertEquals("mockReturn", result);
-        verify(joinPoint, times(1)).proceed();
+    void testInit() {
+        filter.init(filterConfig);
+        // just checking no exception
     }
 
     @Test
-    void testLogMethodExecution_BelowThreshold() throws Throwable {
-        when(joinPoint.getSignature()).thenReturn(signature);
-        when(signature.getName()).thenReturn("mockMethod");
-        when(joinPoint.getTarget()).thenReturn(new CreditProtectionQuoteController()); // your controller
-        when(joinPoint.proceed()).thenReturn("mockResult");
-
-        Object result = loggingAspect.logMethodExecution(joinPoint);
-
-        assertEquals("mockResult", result);
-        verify(joinPoint, times(1)).proceed();
+    void testDestroy() {
+        filter.destroy();
+        // just checking no exception
     }
 
     @Test
-    void testLogMethodExecution_AboveThreshold() throws Throwable {
-        loggingAspect.threshold = -1; // force "above threshold" branch
+    void testDoFilter_AsyncDispatcher() throws IOException, ServletException {
+        when(request.getDispatcherType()).thenReturn(DispatcherType.ASYNC);
 
-        when(joinPoint.getSignature()).thenReturn(signature);
-        when(signature.getName()).thenReturn("slowMethod");
-        when(joinPoint.getTarget()).thenReturn(new CreditProtectionQuoteController()); // your controller
-        when(joinPoint.proceed()).thenAnswer(invocation -> {
-            Thread.sleep(5); // simulate slow method
-            return "slowResult";
-        });
+        filter.doFilter(request, response, chain);
 
-        Object result = loggingAspect.logMethodExecution(joinPoint);
+        // verify filter chain is still called
+        verify(chain, times(1)).doFilter(request, response);
+        // ensure MDC not populated
+        assertNotNull(MDC.getCopyOfContextMap()); // could be null or empty
+    }
 
-        assertEquals("slowResult", result);
-        verify(joinPoint, times(1)).proceed();
+    @Test
+    void testDoFilter_WithTraceabilityIdHeader() throws IOException, ServletException {
+        when(request.getDispatcherType()).thenReturn(DispatcherType.REQUEST);
+        when(request.getHeader(QuoteRequestHeaders.TRACEABILITY_ID)).thenReturn("trace-123");
+
+        filter.doFilter(request, response, chain);
+
+        verify(response, times(1)).addHeader(eq(QuoteRequestHeaders.TRACEABILITY_ID), anyString());
+        verify(chain, times(1)).doFilter(request, response);
+    }
+
+    @Test
+    void testDoFilter_GenerateTraceabilityIdWhenMissing() throws IOException, ServletException {
+        when(request.getDispatcherType()).thenReturn(DispatcherType.REQUEST);
+        when(request.getHeader(QuoteRequestHeaders.TRACEABILITY_ID)).thenReturn(null);
+
+        filter.doFilter(request, response, chain);
+
+        verify(response, times(1)).addHeader(eq(QuoteRequestHeaders.TRACEABILITY_ID), anyString());
+        verify(chain, times(1)).doFilter(request, response);
     }
 }
