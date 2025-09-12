@@ -1,49 +1,49 @@
 @Test
-void testGetIINumber_LowerEnv_Normal_Fixed() throws Exception {
+void testGetIINumber_LowerEnv_Normal_MockEverything() throws Exception {
     CIFApiClient spyClient = spy(cifApiClient);
 
-    // Mock environment
+    // Mock Environment
     Environment mockEnv = mock(Environment.class);
     ReflectionTestUtils.setField(spyClient, "environment", mockEnv);
     when(mockEnv.acceptsProfiles("lower-env")).thenReturn(true);
     when(mockEnv.acceptsProfiles("upper-env")).thenReturn(false);
-
     when(reqHeaders.getHeaderValue(anyString())).thenReturn(null);
 
-    // Mock HttpClient and OAuthClient
+    // Mock CloseableHttpClient
     CloseableHttpClient mockHttpClient = mock(CloseableHttpClient.class);
+
+    // Mock OAuthClient static instance
     OAuthClient mockOAuthClient = mock(OAuthClient.class);
     try (MockedStatic<OAuthClient> oauthStatic = mockStatic(OAuthClient.class)) {
         oauthStatic.when(OAuthClient::getInstance).thenReturn(mockOAuthClient);
-
         when(mockOAuthClient.getSyncClient()).thenReturn(mockHttpClient);
         doNothing().when(mockOAuthClient).addOAuthTokenWithSecondaryToken(any(HttpGet.class), anyString());
 
-        // Return the JSON string directly from execute
-        when(mockHttpClient.execute(any(HttpGet.class), any(ResponseHandler.class)))
-            .thenAnswer(invocation -> {
-                ResponseHandler<String> handler = invocation.getArgument(1);
-                // Directly pass the JSON string expected by ObjectMapper
-                String json = "{\"partyToAlternatePartyKey\":[{\"alternateKey\":\"123\"}]}";
-                return handler.handleResponse(mockResponseWithJson(json));
-            });
+        // Prepare the mock HttpResponse with JSON
+        HttpResponse mockResponse = mock(HttpResponse.class);
+        HttpEntity mockEntity = mock(HttpEntity.class);
+        StatusLine mockStatusLine = mock(StatusLine.class);
+        when(mockResponse.getStatusLine()).thenReturn(mockStatusLine);
+        when(mockStatusLine.getStatusCode()).thenReturn(200);
+        when(mockResponse.getEntity()).thenReturn(mockEntity);
 
-        // Call method
-        String iiNumber = spyClient.getIINumber(reqHeaders, "12345", "jwt");
+        // Mock EntityUtils to return JSON string
+        try (MockedStatic<org.apache.http.util.EntityUtils> entityUtilsMock = mockStatic(org.apache.http.util.EntityUtils.class)) {
+            entityUtilsMock.when(() -> org.apache.http.util.EntityUtils.toString(mockEntity))
+                    .thenReturn("{\"partyToAlternatePartyKey\":[{\"alternateKey\":\"123\"}]}");
 
-        // Assert correct II number
-        assertEquals("123", iiNumber);
+            // Mock execute() to call ResponseHandler with our mockResponse
+            when(mockHttpClient.execute(any(HttpGet.class), any(ResponseHandler.class)))
+                    .thenAnswer(invocation -> {
+                        ResponseHandler<String> handler = invocation.getArgument(1);
+                        return handler.handleResponse(mockResponse);
+                    });
+
+            // Call the method
+            String iiNumber = spyClient.getIINumber(reqHeaders, "12345", "jwt");
+
+            // Assert correct II number is returned
+            assertEquals("123", iiNumber);
+        }
     }
-}
-
-// Helper to return a mock HttpResponse with Entity containing JSON
-private HttpResponse mockResponseWithJson(String json) throws IOException {
-    HttpResponse response = mock(HttpResponse.class);
-    HttpEntity entity = mock(HttpEntity.class);
-    when(response.getEntity()).thenReturn(entity);
-    when(entity.getContent()).thenReturn(new ByteArrayInputStream(json.getBytes(StandardCharsets.UTF_8)));
-    StatusLine statusLine = mock(StatusLine.class);
-    when(statusLine.getStatusCode()).thenReturn(200);
-    when(response.getStatusLine()).thenReturn(statusLine);
-    return response;
 }
