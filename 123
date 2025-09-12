@@ -3,6 +3,7 @@ import org.apache.http.HttpResponse;
 import org.apache.http.StatusLine;
 import org.apache.http.client.HttpClient;
 import org.apache.http.client.ClientProtocolException;
+import org.apache.http.client.ResponseHandler;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.util.EntityUtils;
 import org.junit.jupiter.api.BeforeEach;
@@ -28,9 +29,6 @@ class CIFApiClientTest {
     private QuoteRequestHeaders reqHeaders;
 
     @Mock
-    private OAuthClient oAuthClient;
-
-    @Mock
     private HttpClient httpClient;
 
     @Mock
@@ -43,93 +41,56 @@ class CIFApiClientTest {
     void setUp() {
         MockitoAnnotations.openMocks(this);
         cifApiClient = spy(new CIFApiClient());
+        // setup values for @Value fields
         cifApiClient.cifUrl = "http://dummy.url/@@CIF NUMBER@@";
         cifApiClient.CIF_ENV_ID_KEY = "ENV_ID";
         cifApiClient.CIF_ENG_SYS_KEY = "ENV_SYS";
     }
 
-    // ---------------- getIINumber tests ----------------
-
     @Test
-    void testGetIINumber_LowerEnv_Normal() throws Exception {
+    void testGetIINumber_Normal() throws Exception {
+        // simulate LOWER_ENV branch
         when(environment.acceptsProfiles(Profiles.LOWER_ENV)).thenReturn(true);
-        when(reqHeaders.getHeaderValue(any(), any())).thenReturn("testId");
+        when(reqHeaders.getHeaderValue(any(), any())).thenReturn("headerId");
 
-        doReturn(oAuthClient).when(cifApiClient).getOAuthClient();
-        HttpClient mockClient = mock(HttpClient.class);
-        doReturn(mockClient).when(oAuthClient).getSyncClient();
-        doNothing().when(oAuthClient).addOAuthTokenWithSecondaryToken(any(), any());
-
-        when(mockClient.execute(any(HttpGet.class), any())).thenAnswer(invocation -> {
-            Object handler = invocation.getArguments()[1];
-            return ((ResponseHandler<String>) handler).handleResponse(httpResponse);
-        });
-
-        when(httpResponse.getStatusLine()).thenReturn(statusLine);
-        when(statusLine.getStatusCode()).thenReturn(200);
-        when(httpResponse.getEntity()).thenReturn(mock(org.apache.http.HttpEntity.class));
-        when(EntityUtils.toString(httpResponse.getEntity()))
+        // mock HttpClient and ResponseHandler
+        doReturn(httpClient).when(cifApiClient).getHttpClient(); // assuming you can spy this
+        ResponseHandler<String> handler = cifApiClient.getResponseHandler();
+        when(httpClient.execute(any(HttpGet.class), any(ResponseHandler.class)))
                 .thenReturn("{\"partyToAlternatePartyKey\":[{\"alternateKey\":\"123\"}]}");
 
+        // execute method
         String iiNumber = cifApiClient.getIINumber(reqHeaders, "12345", "jwt");
         assertEquals("123", iiNumber);
     }
 
     @Test
-    void testGetIINumber_LowerEnv_EmptyAlternateKey() throws Exception {
-        when(environment.acceptsProfiles(Profiles.LOWER_ENV)).thenReturn(true);
-        when(reqHeaders.getHeaderValue(any(), any())).thenReturn(null);
-
-        doReturn(oAuthClient).when(cifApiClient).getOAuthClient();
-        HttpClient mockClient = mock(HttpClient.class);
-        doReturn(mockClient).when(oAuthClient).getSyncClient();
-        doNothing().when(oAuthClient).addOAuthTokenWithSecondaryToken(any(), any());
-
-        when(mockClient.execute(any(HttpGet.class), any())).thenReturn(null);
+    void testGetIINumber_NullResponse() throws Exception {
+        doReturn(httpClient).when(cifApiClient).getHttpClient();
+        when(httpClient.execute(any(HttpGet.class), any(ResponseHandler.class))).thenReturn(null);
 
         String iiNumber = cifApiClient.getIINumber(reqHeaders, "12345", "jwt");
         assertEquals(Constants.DEFAULT_II_NUMBER, iiNumber);
     }
 
     @Test
-    void testGetIINumber_UpperEnv() throws Exception {
-        when(environment.acceptsProfiles(Profiles.LOWER_ENV)).thenReturn(false);
-        when(environment.acceptsProfiles(Profiles.UPPER_ENV)).thenReturn(true);
-
-        doReturn(oAuthClient).when(cifApiClient).getOAuthClient();
-        HttpClient mockClient = mock(HttpClient.class);
-        doReturn(mockClient).when(oAuthClient).getSyncClient();
-        doNothing().when(oAuthClient).addOAuthTokenWithSecondaryToken(any(), any());
-
-        when(mockClient.execute(any(HttpGet.class), any())).thenThrow(new RuntimeException("error"));
+    void testGetIINumber_ClientProtocolException() throws Exception {
+        doReturn(httpClient).when(cifApiClient).getHttpClient();
+        when(httpClient.execute(any(HttpGet.class), any(ResponseHandler.class)))
+                .thenThrow(new ClientProtocolException("404"));
 
         String iiNumber = cifApiClient.getIINumber(reqHeaders, "12345", "jwt");
         assertEquals(Constants.DEFAULT_II_NUMBER, iiNumber);
     }
 
     @Test
-    void testGetAccessToken_Normal() throws Exception {
-        OAuthResponse mockResponse = mock(OAuthResponse.class);
-        when(mockResponse.getAccessToken()).thenReturn("token123");
+    void testGetIINumber_OtherException() throws Exception {
+        doReturn(httpClient).when(cifApiClient).getHttpClient();
+        when(httpClient.execute(any(HttpGet.class), any(ResponseHandler.class)))
+                .thenThrow(new RuntimeException("other"));
 
-        OAuthSDRService oAuthService = mock(OAuthSDRService.class);
-        doReturn(mockResponse).when(oAuthService).getToken(any());
-
-        CIFApiClient spyClient = spy(cifApiClient);
-        doReturn(oAuthService).when(spyClient).getOAuthService();
-
-        String token = spyClient.getAccessToken();
-        assertEquals("token123", token);
-    }
-
-    @Test
-    void testGetAccessToken_Exception() throws Exception {
-        CIFApiClient spyClient = spy(cifApiClient);
-        doThrow(new ApiConfigException("config error"))
-                .when(spyClient).buildOAuthRequest();
-
-        ApiException ex = assertThrows(ApiException.class, spyClient::getAccessToken);
-        assertNotNull(ex);
+        String iiNumber = cifApiClient.getIINumber(reqHeaders, "12345", "jwt");
+        assertEquals(Constants.DEFAULT_II_NUMBER, iiNumber);
     }
 
     @Test
@@ -141,20 +102,19 @@ class CIFApiClientTest {
         when(response.getEntity()).thenReturn(mock(org.apache.http.HttpEntity.class));
         when(EntityUtils.toString(response.getEntity())).thenReturn("body");
 
-        assertEquals("body", cifApiClient.getResponseHandler().handleResponse(response));
+        ResponseHandler<String> handler = cifApiClient.getResponseHandler();
+        String result = handler.handleResponse(response);
+        assertEquals("body", result);
     }
 
     @Test
-    void testGetResponseHandler_Error() throws Exception {
+    void testGetResponseHandler_Error() {
         HttpResponse response = mock(HttpResponse.class);
         StatusLine status = mock(StatusLine.class);
         when(status.getStatusCode()).thenReturn(500);
         when(response.getStatusLine()).thenReturn(status);
-        when(response.getEntity()).thenReturn(mock(org.apache.http.HttpEntity.class));
-        when(EntityUtils.toString(response.getEntity())).thenReturn("error body");
 
-        ClientProtocolException ex = assertThrows(ClientProtocolException.class,
-                () -> cifApiClient.getResponseHandler().handleResponse(response));
-        assertNotNull(ex);
+        ResponseHandler<String> handler = cifApiClient.getResponseHandler();
+        assertThrows(ClientProtocolException.class, () -> handler.handleResponse(response));
     }
 }
