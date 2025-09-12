@@ -1,79 +1,160 @@
-import jakarta.persistence.PersistenceException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.http.HttpResponse;
+import org.apache.http.StatusLine;
+import org.apache.http.client.HttpClient;
+import org.apache.http.client.ClientProtocolException;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.util.EntityUtils;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.test.util.ReflectionTestUtils;
+import org.mockito.*;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
 
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Supplier;
+import java.util.Collections;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
-class DbUtilTest {
+class CIFApiClientTest {
 
-    private DbUtil dbUtil;
+    @InjectMocks
+    private CIFApiClient cifApiClient;
+
+    @Mock
+    private Environment environment;
+
+    @Mock
+    private QuoteRequestHeaders reqHeaders;
+
+    @Mock
+    private OAuthClient oAuthClient;
+
+    @Mock
+    private HttpClient httpClient;
+
+    @Mock
+    private HttpResponse httpResponse;
+
+    @Mock
+    private StatusLine statusLine;
 
     @BeforeEach
     void setUp() {
-        dbUtil = new DbUtil();
-        // inject private fields
-        ReflectionTestUtils.setField(dbUtil, "DB_CONN_RETRY_DUR_REY", 0); // avoid sleep
-        ReflectionTestUtils.setField(dbUtil, "DB_CONN_MAX_RETRY_REY", 2);
+        MockitoAnnotations.openMocks(this);
+        cifApiClient = spy(new CIFApiClient());
+        cifApiClient.cifUrl = "http://dummy.url/@@CIF NUMBER@@";
+        cifApiClient.CIF_ENV_ID_KEY = "ENV_ID";
+        cifApiClient.CIF_ENG_SYS_KEY = "ENV_SYS";
     }
 
-    // ---------------- retryDbOperation ----------------
+    // ---------------- getIINumber tests ----------------
 
     @Test
-    void testRetryDbOperation_SuccessFirstTry() {
-        boolean result = dbUtil.retryDbOperation(() -> {
-            // no exception
+    void testGetIINumber_LowerEnv_Normal() throws Exception {
+        when(environment.acceptsProfiles(Profiles.LOWER_ENV)).thenReturn(true);
+        when(reqHeaders.getHeaderValue(any(), any())).thenReturn("testId");
+
+        doReturn(oAuthClient).when(cifApiClient).getOAuthClient();
+        HttpClient mockClient = mock(HttpClient.class);
+        doReturn(mockClient).when(oAuthClient).getSyncClient();
+        doNothing().when(oAuthClient).addOAuthTokenWithSecondaryToken(any(), any());
+
+        when(mockClient.execute(any(HttpGet.class), any())).thenAnswer(invocation -> {
+            Object handler = invocation.getArguments()[1];
+            return ((ResponseHandler<String>) handler).handleResponse(httpResponse);
         });
-        assertTrue(result);
+
+        when(httpResponse.getStatusLine()).thenReturn(statusLine);
+        when(statusLine.getStatusCode()).thenReturn(200);
+        when(httpResponse.getEntity()).thenReturn(mock(org.apache.http.HttpEntity.class));
+        when(EntityUtils.toString(httpResponse.getEntity()))
+                .thenReturn("{\"partyToAlternatePartyKey\":[{\"alternateKey\":\"123\"}]}");
+
+        String iiNumber = cifApiClient.getIINumber(reqHeaders, "12345", "jwt");
+        assertEquals("123", iiNumber);
     }
 
     @Test
-    void testRetryDbOperation_SuccessAfterRetry() {
-        AtomicInteger counter = new AtomicInteger(0);
-        boolean result = dbUtil.retryDbOperation(() -> {
-            if (counter.getAndIncrement() == 0) {
-                throw new PersistenceException("first fail");
-            }
-        });
-        assertTrue(result);
+    void testGetIINumber_LowerEnv_EmptyAlternateKey() throws Exception {
+        when(environment.acceptsProfiles(Profiles.LOWER_ENV)).thenReturn(true);
+        when(reqHeaders.getHeaderValue(any(), any())).thenReturn(null);
+
+        doReturn(oAuthClient).when(cifApiClient).getOAuthClient();
+        HttpClient mockClient = mock(HttpClient.class);
+        doReturn(mockClient).when(oAuthClient).getSyncClient();
+        doNothing().when(oAuthClient).addOAuthTokenWithSecondaryToken(any(), any());
+
+        when(mockClient.execute(any(HttpGet.class), any())).thenReturn(null);
+
+        String iiNumber = cifApiClient.getIINumber(reqHeaders, "12345", "jwt");
+        assertEquals(Constants.DEFAULT_II_NUMBER, iiNumber);
     }
 
     @Test
-    void testRetryDbOperation_FailureExhaustedRetries() {
-        boolean result = dbUtil.retryDbOperation(() -> {
-            throw new PersistenceException("always fail");
-        });
-        assertFalse(result);
-    }
+    void testGetIINumber_UpperEnv() throws Exception {
+        when(environment.acceptsProfiles(Profiles.LOWER_ENV)).thenReturn(false);
+        when(environment.acceptsProfiles(Profiles.UPPER_ENV)).thenReturn(true);
 
-    // ---------------- retryDbQueryOperation ----------------
+        doReturn(oAuthClient).when(cifApiClient).getOAuthClient();
+        HttpClient mockClient = mock(HttpClient.class);
+        doReturn(mockClient).when(oAuthClient).getSyncClient();
+        doNothing().when(oAuthClient).addOAuthTokenWithSecondaryToken(any(), any());
 
-    @Test
-    void testRetryDbQueryOperation_SuccessFirstTry() {
-        Object result = dbUtil.retryDbQueryOperation(() -> "value");
-        assertEquals("value", result);
-    }
+        when(mockClient.execute(any(HttpGet.class), any())).thenThrow(new RuntimeException("error"));
 
-    @Test
-    void testRetryDbQueryOperation_SuccessAfterRetry() {
-        AtomicInteger counter = new AtomicInteger(0);
-        Object result = dbUtil.retryDbQueryOperation(() -> {
-            if (counter.getAndIncrement() == 0) {
-                throw new PersistenceException("fail once");
-            }
-            return "ok";
-        });
-        assertEquals("ok", result);
+        String iiNumber = cifApiClient.getIINumber(reqHeaders, "12345", "jwt");
+        assertEquals(Constants.DEFAULT_II_NUMBER, iiNumber);
     }
 
     @Test
-    void testRetryDbQueryOperation_FailureExhaustedRetries() {
-        Object result = dbUtil.retryDbQueryOperation(() -> {
-            throw new PersistenceException("always fail");
-        });
-        assertNull(result);
+    void testGetAccessToken_Normal() throws Exception {
+        OAuthResponse mockResponse = mock(OAuthResponse.class);
+        when(mockResponse.getAccessToken()).thenReturn("token123");
+
+        OAuthSDRService oAuthService = mock(OAuthSDRService.class);
+        doReturn(mockResponse).when(oAuthService).getToken(any());
+
+        CIFApiClient spyClient = spy(cifApiClient);
+        doReturn(oAuthService).when(spyClient).getOAuthService();
+
+        String token = spyClient.getAccessToken();
+        assertEquals("token123", token);
+    }
+
+    @Test
+    void testGetAccessToken_Exception() throws Exception {
+        CIFApiClient spyClient = spy(cifApiClient);
+        doThrow(new ApiConfigException("config error"))
+                .when(spyClient).buildOAuthRequest();
+
+        ApiException ex = assertThrows(ApiException.class, spyClient::getAccessToken);
+        assertNotNull(ex);
+    }
+
+    @Test
+    void testGetResponseHandler_Success() throws Exception {
+        HttpResponse response = mock(HttpResponse.class);
+        StatusLine status = mock(StatusLine.class);
+        when(status.getStatusCode()).thenReturn(200);
+        when(response.getStatusLine()).thenReturn(status);
+        when(response.getEntity()).thenReturn(mock(org.apache.http.HttpEntity.class));
+        when(EntityUtils.toString(response.getEntity())).thenReturn("body");
+
+        assertEquals("body", cifApiClient.getResponseHandler().handleResponse(response));
+    }
+
+    @Test
+    void testGetResponseHandler_Error() throws Exception {
+        HttpResponse response = mock(HttpResponse.class);
+        StatusLine status = mock(StatusLine.class);
+        when(status.getStatusCode()).thenReturn(500);
+        when(response.getStatusLine()).thenReturn(status);
+        when(response.getEntity()).thenReturn(mock(org.apache.http.HttpEntity.class));
+        when(EntityUtils.toString(response.getEntity())).thenReturn("error body");
+
+        ClientProtocolException ex = assertThrows(ClientProtocolException.class,
+                () -> cifApiClient.getResponseHandler().handleResponse(response));
+        assertNotNull(ex);
     }
 }
