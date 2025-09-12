@@ -17,27 +17,34 @@ void testGetIINumber_LowerEnv_Normal() throws Exception {
     when(mockStatusLine.getStatusCode()).thenReturn(200);
     when(mockResponse.getStatusLine()).thenReturn(mockStatusLine);
 
-    // The JSON must match CIFAPIResponse structure
+    // **EntityUtils.toString will return JSON**
     String json = "{\"partyToAlternatePartyKey\":[{\"alternateKey\":\"123\"}]}";
-    when(mockEntity.getContent()).thenReturn(new ByteArrayInputStream(json.getBytes()));
     when(mockResponse.getEntity()).thenReturn(mockEntity);
+    when(mockEntity.getContentLength()).thenReturn((long) json.length());
+    when(mockEntity.isRepeatable()).thenReturn(true);
 
-    // Mock OAuthClient
-    try (MockedStatic<OAuthClient> mockedOAuth = mockStatic(OAuthClient.class)) {
-        OAuthClient mockOAuthClient = mock(OAuthClient.class);
-        mockedOAuth.when(OAuthClient::getInstance).thenReturn(mockOAuthClient);
+    // Mock EntityUtils.toString() using static mocking
+    try (MockedStatic<org.apache.http.util.EntityUtils> mockedEntityUtils = mockStatic(org.apache.http.util.EntityUtils.class)) {
+        mockedEntityUtils.when(() -> org.apache.http.util.EntityUtils.toString(mockEntity))
+                .thenReturn(json);
 
-        when(mockOAuthClient.getSyncClient()).thenReturn(mockHttpClient);
-        doNothing().when(mockOAuthClient).addOAuthTokenWithSecondaryToken(any(HttpGet.class), anyString());
+        // Mock OAuthClient
+        try (MockedStatic<OAuthClient> mockedOAuth = mockStatic(OAuthClient.class)) {
+            OAuthClient mockOAuthClient = mock(OAuthClient.class);
+            mockedOAuth.when(OAuthClient::getInstance).thenReturn(mockOAuthClient);
 
-        // **Here we must return the JSON from the ResponseHandler**
-        when(mockHttpClient.execute(any(HttpGet.class), any(ResponseHandler.class)))
-                .thenAnswer(invocation -> {
-                    ResponseHandler<String> handler = invocation.getArgument(1);
-                    return handler.handleResponse(mockResponse); // returns JSON string
-                });
+            when(mockOAuthClient.getSyncClient()).thenReturn(mockHttpClient);
+            doNothing().when(mockOAuthClient).addOAuthTokenWithSecondaryToken(any(HttpGet.class), anyString());
 
-        String iiNumber = cifApiClient.getIINumber(reqHeaders, "12345", "jwt");
-        assertEquals("123", iiNumber); // ✅ now matches the JSON value
+            // **Return response from ResponseHandler**
+            when(mockHttpClient.execute(any(HttpGet.class), any(ResponseHandler.class)))
+                    .thenAnswer(invocation -> {
+                        ResponseHandler<String> handler = invocation.getArgument(1);
+                        return handler.handleResponse(mockResponse);
+                    });
+
+            String iiNumber = cifApiClient.getIINumber(reqHeaders, "12345", "jwt");
+            assertEquals("123", iiNumber); // ✅ now matches JSON
+        }
     }
 }
