@@ -4,6 +4,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.*;
@@ -22,8 +23,8 @@ class SequenceValueGetterTest {
     void setUp() {
         MockitoAnnotations.openMocks(this);
         sequenceValueGetter = new SequenceValueGetter();
-        // inject mock EntityManager
-        sequenceValueGetter.entityManager = entityManager;
+        // inject mock into private field
+        ReflectionTestUtils.setField(sequenceValueGetter, "entityManager", entityManager);
     }
 
     @Test
