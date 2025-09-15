@@ -12,19 +12,19 @@ void testGetCpQuote_HttpStatusNullBranch() throws Exception {
 
     ApiException apiEx = mock(ApiException.class);
     AddCreditProtectionQuotationWarningRsStatus statusMock = mock(AddCreditProtectionQuotationWarningRsStatus.class);
-    
+
     // Return a non-numeric server status code to simulate NumberFormatException
     when(statusMock.getServerStatusCode()).thenReturn("INVALID_CODE");
-    when(apiEx.toWarningStatusV2Response()).thenReturn(statusMock);
+    when(apiEx.toWarningStatusResponse()).thenReturn(statusMock);
 
     // Force cpFac to throw ApiException
-    when(cpFac.getCreditProtectionQuotationV2(any(), any())).thenThrow(apiEx);
+    when(cpFac.getCreditProtectionQuotation(any(), any())).thenThrow(apiEx);
 
     // Call the controller method
     ResponseEntity<AddCreditProtectionQuotationWarningRs> response =
-        controller.getCpQuoteWithAllPremium("en", "Bearer token", request);
+        controller.getCpQuote("en", "Bearer token", request);
 
-    // Assert: httpStatus will fall back due to NumberFormatException
+    // Assert: HttpStatus branch where conversion fails
     assertThat(response).isNotNull();
     assertThat(response.getBody()).isNotNull();
     assertThat(response.getBody().getStatus()).isEqualTo(statusMock);
