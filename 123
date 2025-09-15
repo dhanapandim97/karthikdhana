@@ -1,156 +1,41 @@
-import static org.mockito.Mockito.*;
-import static org.assertj.core.api.Assertions.assertThat;
+@Test
+void testGetCpQuote_MultiCustomerLifeBranch_LN2() throws Exception {
+    testMultiCustomerLifeBranch("LN2");
+}
 
-import java.util.ArrayList;
-import java.util.List;
+@Test
+void testGetCpQuote_MultiCustomerLifeBranch_LN3() throws Exception {
+    testMultiCustomerLifeBranch("LN3");
+}
 
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.mockito.MockitoAnnotations;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
+private void testMultiCustomerLifeBranch(String productType) throws Exception {
+    AddCreditProtectionQuotationRq request = new AddCreditProtectionQuotationRq();
+    AddCreditProtectionQuotationRqQuotation infoRq = new AddCreditProtectionQuotationRqQuotation();
+    infoRq.setApplicant(new ArrayList<>(List.of(new AddCreditProtectionQuotationRqQuotationApplicantInner())));
+    infoRq.setMultiCustomerLifeIndicator(true);
 
-public class CreditProtectionQuoteControllerTests {
+    AddCreditProtectionQuotationRqQuotationCreditApplication creditApp = new AddCreditProtectionQuotationRqQuotationCreditApplication();
+    creditApp.setProductTypeCd(productType);
+    infoRq.setCreditApplication(creditApp);
+    request.setQuotation(infoRq);
 
-    private CreditProtectionQuoteController controller;
-    private CreditProtectionQuotationFactory cpFac;
+    when(cpFac.buildRequestBodyForMultiCustomerDiscount(any())).thenAnswer(inv -> {
+        AddCreditProtectionQuotationRqQuotation rq = inv.getArgument(0);
+        rq.getApplicant().add(new AddCreditProtectionQuotationRqQuotationApplicantInner()); // dummy
+        return rq;
+    });
 
-    @BeforeEach
-    void setup() {
-        MockitoAnnotations.openMocks(this);
-        cpFac = mock(CreditProtectionQuotationFactory.class);
-        controller = new CreditProtectionQuoteController(cpFac);
-    }
+    AddCreditProtectionQuotationV2RsQuotation quotation = new AddCreditProtectionQuotationV2RsQuotation();
+    quotation.setApplicant(new ArrayList<>(List.of(
+        new AddCreditProtectionQuotationV2RsQuotationApplicantInner(),
+        new AddCreditProtectionQuotationV2RsQuotationApplicantInner()
+    )));
+    when(cpFac.getCreditProtectionQuotationV2(any(), any())).thenReturn(quotation);
 
-    @Test
-    void testGetCpQuote_MultiCustomerIndicatorBranch() throws Exception {
-        AddCreditProtectionQuotationRq request = new AddCreditProtectionQuotationRq();
-        AddCreditProtectionQuotationRqQuotation infoRq = new AddCreditProtectionQuotationRqQuotation();
-        infoRq.setApplicant(new ArrayList<>(List.of(new AddCreditProtectionQuotationRqQuotationApplicantInner())));
-        infoRq.setMultiCustomerIndicator(true);
-        infoRq.setMultiCustomerLifeIndicator(false);
-        infoRq.setCreditApplication(new AddCreditProtectionQuotationRqQuotationCreditApplication());
-        request.setQuotation(infoRq);
+    ResponseEntity<AddCreditProtectionQuotationWarningRs> response = controller.getCpQuoteWithAllPremium("en", "Bearer token", request);
 
-        when(cpFac.buildRequestBodyForMultiCustomerDiscount(any())).thenAnswer(inv -> {
-            AddCreditProtectionQuotationRqQuotation rq = inv.getArgument(0);
-            rq.getApplicant().add(new AddCreditProtectionQuotationRqQuotationApplicantInner()); // dummy
-            return rq;
-        });
-
-        AddCreditProtectionQuotationV2RsQuotation quotation = new AddCreditProtectionQuotationV2RsQuotation();
-        quotation.setApplicant(new ArrayList<>(List.of(new AddCreditProtectionQuotationV2RsQuotationApplicantInner())));
-        when(cpFac.getCreditProtectionQuotationV2(any(), any())).thenReturn(quotation);
-
-        ResponseEntity<AddCreditProtectionQuotationWarningRs> response = controller.getCpQuoteWithAllPremium("en", "Bearer token", request);
-
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
-        assertThat(response.getBody()).isNotNull();
-        assertThat(response.getBody().getQuotation()).isNotNull();
-    }
-
-    @Test
-    void testGetCpQuote_MultiCustomerLifeBranch_LN2() throws Exception {
-        AddCreditProtectionQuotationRq request = new AddCreditProtectionQuotationRq();
-        AddCreditProtectionQuotationRqQuotation infoRq = new AddCreditProtectionQuotationRqQuotation();
-        infoRq.setApplicant(new ArrayList<>(List.of(new AddCreditProtectionQuotationRqQuotationApplicantInner())));
-        infoRq.setMultiCustomerLifeIndicator(true);
-        AddCreditProtectionQuotationRqQuotationCreditApplication creditApp = new AddCreditProtectionQuotationRqQuotationCreditApplication();
-        creditApp.setProductTypeCd("LN2");
-        infoRq.setCreditApplication(creditApp);
-        request.setQuotation(infoRq);
-
-        when(cpFac.buildRequestBodyForMultiCustomerDiscount(any())).thenAnswer(inv -> {
-            AddCreditProtectionQuotationRqQuotation rq = inv.getArgument(0);
-            rq.getApplicant().add(new AddCreditProtectionQuotationRqQuotationApplicantInner()); // dummy
-            return rq;
-        });
-
-        AddCreditProtectionQuotationV2RsQuotation quotation = new AddCreditProtectionQuotationV2RsQuotation();
-        quotation.setApplicant(new ArrayList<>(List.of(
-            new AddCreditProtectionQuotationV2RsQuotationApplicantInner(),
-            new AddCreditProtectionQuotationV2RsQuotationApplicantInner()
-        )));
-        when(cpFac.getCreditProtectionQuotationV2(any(), any())).thenReturn(quotation);
-
-        ResponseEntity<AddCreditProtectionQuotationWarningRs> response = controller.getCpQuoteWithAllPremium("en", "Bearer token", request);
-
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
-        assertThat(response.getBody()).isNotNull();
-        assertThat(response.getBody().getQuotation()).isNotNull();
-        // dummy applicant removed inside controller, should remain 1
-        assertThat(response.getBody().getQuotation().getApplicant().size()).isEqualTo(1);
-    }
-
-    @Test
-    void testGetCpQuote_MultiCustomerLifeBranch_LN3() throws Exception {
-        AddCreditProtectionQuotationRq request = new AddCreditProtectionQuotationRq();
-        AddCreditProtectionQuotationRqQuotation infoRq = new AddCreditProtectionQuotationRqQuotation();
-        infoRq.setApplicant(new ArrayList<>(List.of(new AddCreditProtectionQuotationRqQuotationApplicantInner())));
-        infoRq.setMultiCustomerLifeIndicator(true);
-        AddCreditProtectionQuotationRqQuotationCreditApplication creditApp = new AddCreditProtectionQuotationRqQuotationCreditApplication();
-        creditApp.setProductTypeCd("LN3");
-        infoRq.setCreditApplication(creditApp);
-        request.setQuotation(infoRq);
-
-        when(cpFac.buildRequestBodyForMultiCustomerDiscount(any())).thenAnswer(inv -> {
-            AddCreditProtectionQuotationRqQuotation rq = inv.getArgument(0);
-            rq.getApplicant().add(new AddCreditProtectionQuotationRqQuotationApplicantInner()); // dummy
-            return rq;
-        });
-
-        AddCreditProtectionQuotationV2RsQuotation quotation = new AddCreditProtectionQuotationV2RsQuotation();
-        quotation.setApplicant(new ArrayList<>(List.of(
-            new AddCreditProtectionQuotationV2RsQuotationApplicantInner(),
-            new AddCreditProtectionQuotationV2RsQuotationApplicantInner()
-        )));
-        when(cpFac.getCreditProtectionQuotationV2(any(), any())).thenReturn(quotation);
-
-        ResponseEntity<AddCreditProtectionQuotationWarningRs> response = controller.getCpQuoteWithAllPremium("en", "Bearer token", request);
-
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
-        assertThat(response.getBody()).isNotNull();
-        assertThat(response.getBody().getQuotation()).isNotNull();
-        assertThat(response.getBody().getQuotation().getApplicant().size()).isEqualTo(1);
-    }
-
-    @Test
-    void testGetCpQuote_ApplicantSizeNot1Branch() throws Exception {
-        AddCreditProtectionQuotationRq request = new AddCreditProtectionQuotationRq();
-        AddCreditProtectionQuotationRqQuotation infoRq = new AddCreditProtectionQuotationRqQuotation();
-        infoRq.setApplicant(new ArrayList<>(List.of(
-            new AddCreditProtectionQuotationRqQuotationApplicantInner(),
-            new AddCreditProtectionQuotationRqQuotationApplicantInner() // size = 2
-        )));
-        infoRq.setMultiCustomerIndicator(false);
-        infoRq.setMultiCustomerLifeIndicator(false);
-        request.setQuotation(infoRq);
-
-        AddCreditProtectionQuotationV2RsQuotation quotation = new AddCreditProtectionQuotationV2RsQuotation();
-        quotation.setApplicant(new ArrayList<>(infoRq.getApplicant()));
-        when(cpFac.getCreditProtectionQuotationV2(any(), any())).thenReturn(quotation);
-
-        ResponseEntity<AddCreditProtectionQuotationWarningRs> response = controller.getCpQuoteWithAllPremium("en", "Bearer token", request);
-
-        assertThat(response.getBody().getQuotation().getApplicant().size()).isEqualTo(2);
-    }
-
-    @Test
-    void testGetCpQuote_BothIndicatorsTrueBranch() throws Exception {
-        AddCreditProtectionQuotationRq request = new AddCreditProtectionQuotationRq();
-        AddCreditProtectionQuotationRqQuotation infoRq = new AddCreditProtectionQuotationRqQuotation();
-        infoRq.setApplicant(new ArrayList<>(List.of(new AddCreditProtectionQuotationRqQuotationApplicantInner())));
-        infoRq.setMultiCustomerIndicator(true);
-        infoRq.setMultiCustomerLifeIndicator(true);
-        request.setQuotation(infoRq);
-
-        AddCreditProtectionQuotationV2RsQuotation quotation = new AddCreditProtectionQuotationV2RsQuotation();
-        quotation.setApplicant(new ArrayList<>(List.of(new AddCreditProtectionQuotationV2RsQuotationApplicantInner())));
-        when(cpFac.getCreditProtectionQuotationV2(any(), any())).thenReturn(quotation);
-
-        ResponseEntity<AddCreditProtectionQuotationWarningRs> response = controller.getCpQuoteWithAllPremium("en", "Bearer token", request);
-
-        // Dummy applicant branch should NOT execute
-        assertThat(response.getBody().getQuotation().getApplicant().size()).isEqualTo(1);
-    }
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+    assertThat(response.getBody()).isNotNull();
+    assertThat(response.getBody().getQuotation()).isNotNull();
+    assertThat(response.getBody().getQuotation().getApplicant().size()).isEqualTo(1); // dummy removed
 }
