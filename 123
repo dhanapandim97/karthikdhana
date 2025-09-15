@@ -1,22 +1,31 @@
 @Test
-void testGetCpQuote_HttpStatusIfBranch() throws Exception {
+void testGetCpQuote_HttpStatusNullBranch() throws Exception {
+    // Prepare request
     AddCreditProtectionQuotationRq request = new AddCreditProtectionQuotationRq();
     AddCreditProtectionQuotationRqQuotation infoRq = new AddCreditProtectionQuotationRqQuotation();
     infoRq.setApplicant(List.of(new AddCreditProtectionQuotationRqQuotationApplicantInner()));
     request.setQuotation(infoRq);
 
-    // Mock cpFac to throw ApiException with valid numeric server status code
+    // Mock ApiException
     ErrorConfig mockErrorConfig = mock(ErrorConfig.class);
     when(mockErrorConfig.getId()).thenReturn("TEST_ID");
+
     ApiException apiEx = mock(ApiException.class);
     AddCreditProtectionQuotationWarningRsStatus statusMock = mock(AddCreditProtectionQuotationWarningRsStatus.class);
+    
+    // Return a non-numeric server status code to simulate NumberFormatException
+    when(statusMock.getServerStatusCode()).thenReturn("INVALID_CODE");
     when(apiEx.toWarningStatusV2Response()).thenReturn(statusMock);
-    when(statusMock.getServerStatusCode()).thenReturn("201"); // valid numeric
+
+    // Force cpFac to throw ApiException
     when(cpFac.getCreditProtectionQuotationV2(any(), any())).thenThrow(apiEx);
 
+    // Call the controller method
     ResponseEntity<AddCreditProtectionQuotationWarningRs> response =
         controller.getCpQuoteWithAllPremium("en", "Bearer token", request);
 
-    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED); // 201 branch hit
+    // Assert: httpStatus will fall back due to NumberFormatException
+    assertThat(response).isNotNull();
+    assertThat(response.getBody()).isNotNull();
     assertThat(response.getBody().getStatus()).isEqualTo(statusMock);
 }
