@@ -18,13 +18,14 @@ void testGetCpQuoteWithAllPremium_MultiCustomerLifeBranch_LN2() throws Exception
         return rq;
     });
 
-    // Mock getCreditProtectionQuotationV2 to return two applicants
-    AddCreditProtectionQuotationV2RsQuotation quotation = new AddCreditProtectionQuotationV2RsQuotation();
-    quotation.setApplicant(new ArrayList<>(List.of(
+    // Mock the service that returns cpQuotationRsV2 (fully initialized)
+    AddCreditProtectionQuotationV2RsQuotation cpQuotationRsV2 = new AddCreditProtectionQuotationV2RsQuotation();
+    cpQuotationRsV2.setApplicant(new ArrayList<>(List.of(
         new AddCreditProtectionQuotationV2RsQuotationApplicantInner(),
         new AddCreditProtectionQuotationV2RsQuotationApplicantInner() // dummy
     )));
-    when(cpFac.getCreditProtectionQuotationV2(any(), any())).thenReturn(quotation);
+    when(lonCreditProtectionQuotationService.buildFinalResponseForLoanMultiCustomerLifeOnly(
+        any(), any(), any())).thenReturn(cpQuotationRsV2);
 
     // Act
     ResponseEntity<AddCreditProtectionQuotationWarningRs> response =
