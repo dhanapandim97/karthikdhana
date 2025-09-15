@@ -1,26 +1,28 @@
-import static org.mockito.Mockito.*;
-
-import org.mockito.MockedStatic;
-
-// inside your test
 @Test
 public void testGetCpQuoteV2ApiExceptionBranch() throws Exception {
-    // Mock ApiErrorHandler
+    // Mock ApiErrorHandler static
     MockedStatic<ApiErrorHandler> mockedHandler = mockStatic(ApiErrorHandler.class);
     ApiErrorHandler mockHandlerInstance = mock(ApiErrorHandler.class);
     mockedHandler.when(ApiErrorHandler::getInstance).thenReturn(mockHandlerInstance);
 
-    // Mock methods used in ApiException
-    when(mockHandlerInstance.getServerStatusCode(anyString())).thenReturn("500");
-    when(mockHandlerInstance.getSeverity(anyString())).thenReturn("ERROR");
-    when(mockHandlerInstance.getAdditionalErrors(anyString())).thenReturn(List.of(mock(AddError.class)));
+    // Create a fake Error object to avoid NPE
+    com.td.tdi.cp.api.cpqte.model.errorhandling.Error fakeError = mock(com.td.tdi.cp.api.cpqte.model.errorhandling.Error.class);
+    when(fakeError.getServerStatusCode()).thenReturn("500");
+    when(fakeError.getStatusCode()).thenReturn(500);
+    when(fakeError.getStatusDesc()).thenReturn("Test error");
 
-    // ApiException with mocked ErrorConfig
+    // Mock methods in ApiErrorHandler
+    when(mockHandlerInstance.getAdditionalErrors(anyString()))
+            .thenReturn(List.of(fakeError));
+    when(mockHandlerInstance.getServerStatusCode(anyString())).thenReturn("500");
+    when(mockHandlerInstance.getSeverity(anyString())).thenReturn("CRITICAL"); // use a valid value in your model if required
+
+    // Create ApiException
     ErrorConfig mockErrorConfig = mock(ErrorConfig.class);
     when(mockErrorConfig.getId()).thenReturn("TEST_ID");
     ApiException apiEx = new ApiException(mockErrorConfig);
 
-    // Mock factory to throw this exception
+    // Mock the factory to throw exception
     when(cpFac.getCreditProtectionQuotationV2(any(), any())).thenThrow(apiEx);
 
     ResponseEntity<AddCreditProtectionSimulationErrorRs> response =
@@ -30,5 +32,5 @@ public void testGetCpQuoteV2ApiExceptionBranch() throws Exception {
     assertThat(response.getBody()).isNotNull();
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
 
-    mockedHandler.close(); // important to release static mock
+    mockedHandler.close(); // Release static mock
 }
