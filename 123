@@ -1,20 +1,26 @@
-@Test
-void testGetAccessToken_ApiConfigException() {
-    try (MockedConstruction<OAuthRequestBuilder> mocked = 
-             Mockito.mockConstruction(OAuthRequestBuilder.class,
-                 (mock, context) -> {
-                     // mock the nested builder type
-                     var nestedBuilder = Mockito.mock(OAuthRequestBuilder.OAuthClientRequestOAuthClientRequestBuilder.class);
+import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
+import org.springframework.boot.info.BuildProperties;
 
-                     // stub the chaining correctly
-                     when(mock.withClientCredentialsRequest()).thenReturn(nestedBuilder);
-                     when(nestedBuilder.endClientCredentialsRequest()).thenReturn(mock);
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
-                     // final build() throws the exception
-                     when(mock.build()).thenThrow(new ApiConfigException("bad"));
-                 })) {
+public class BuildInfoControllerTest {
 
-        // Run method under test
-        assertThrows(ApiException.class, () -> cifApiClient.getAccessToken());
+    @Test
+    public void testGetBuildInfo() {
+        // Mock BuildProperties
+        BuildProperties mockBuildProperties = Mockito.mock(BuildProperties.class);
+        Mockito.when(mockBuildProperties.getName()).thenReturn("MyApp");
+        Mockito.when(mockBuildProperties.getVersion()).thenReturn("1.0.0");
+
+        // Initialize controller
+        BuildInfoController controller = new BuildInfoController(mockBuildProperties);
+
+        // Call the method
+        BuildProperties result = controller.getBuildInfo();
+
+        // Assertions
+        assertEquals("MyApp", result.getName());
+        assertEquals("1.0.0", result.getVersion());
     }
 }
