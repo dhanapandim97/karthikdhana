@@ -8,30 +8,41 @@ void testGetCpQuote_MultiCustomerLifeBranch() throws ApiException {
 
     AddCreditProtectionQuotationRqQuotationCreditApplication creditApp =
             new AddCreditProtectionQuotationRqQuotationCreditApplication();
-    creditApp.setProductTypeCd("LN2"); // can also test "LN3"
+    creditApp.setProductTypeCd("LN2"); // or "LN3" to hit the other branch
     infoRq.setCreditApplication(creditApp);
 
     request.setQuotation(infoRq);
 
-    // Add dummy applicant
+    // Add dummy applicant into request
     when(cpFac.buildRequestBodyForMultiCustomerDiscount(any())).thenAnswer(inv -> {
         AddCreditProtectionQuotationRqQuotation rq = inv.getArgument(0);
         rq.getApplicant().add(new AddCreditProtectionQuotationRqQuotationApplicantInner()); // dummy
         return rq;
     });
 
-    // Response with 2 applicants (so removal branch executes)
+    // Build response quotation with 2 applicants
     AddCreditProtectionQuotationV2RsQuotation quotation = new AddCreditProtectionQuotationV2RsQuotation();
     quotation.setApplicant(new ArrayList<>(List.of(
             new AddCreditProtectionQuotationV2RsQuotationApplicantInner(),
             new AddCreditProtectionQuotationV2RsQuotationApplicantInner()
     )));
+
+    // Wrap inside response body
+    AddCreditProtectionQuotationWarningRs responseBody = new AddCreditProtectionQuotationWarningRs();
+    responseBody.setQuotation(quotation);
+
+    ResponseEntity<AddCreditProtectionQuotationWarningRs> serviceResponse =
+            new ResponseEntity<>(responseBody, HttpStatus.CREATED);
+
     when(cpFac.getCreditProtectionQuotationV2(any(), any())).thenReturn(quotation);
 
+    // Act
     ResponseEntity<AddCreditProtectionQuotationWarningRs> response =
             controller.getcpQuote("en", "Bearer token", request);
 
+    // Assert
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
     assertThat(response.getBody()).isNotNull();
+    assertThat(response.getBody().getQuotation()).isNotNull();
     assertThat(response.getBody().getQuotation().getApplicant().size()).isEqualTo(1); // dummy removed
 }
