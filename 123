@@ -1,40 +1,43 @@
 @Test
-void testGetCpQuote_MultiCustomerLifeBranch() throws ApiException {
+void testGetcpQuote_MultiCustomerLifeBranch() throws ApiException {
+    // Arrange
     AddCreditProtectionQuotationRq request = new AddCreditProtectionQuotationRq();
     AddCreditProtectionQuotationRqQuotation infoRq = new AddCreditProtectionQuotationRqQuotation();
 
-    infoRq.setApplicant(new ArrayList<>(List.of(new AddCreditProtectionQuotationRqQuotationApplicantInner())));
+    infoRq.setApplicant(new ArrayList<>(
+            List.of(new AddCreditProtectionQuotationRqQuotationApplicantInner())
+    ));
     infoRq.setMultiCustomerLifeIndicator(true);
 
     AddCreditProtectionQuotationRqQuotationCreditApplication creditApp =
             new AddCreditProtectionQuotationRqQuotationCreditApplication();
-    creditApp.setProductTypeCd("LN2"); // or "LN3" to hit the other branch
+    creditApp.setProductTypeCd("LN2"); // or "LN3" to cover the other branch
     infoRq.setCreditApplication(creditApp);
 
     request.setQuotation(infoRq);
 
-    // Add dummy applicant into request
+    // Mock cpFac.buildRequestBodyForMultiCustomerDiscount
     when(cpFac.buildRequestBodyForMultiCustomerDiscount(any())).thenAnswer(inv -> {
         AddCreditProtectionQuotationRqQuotation rq = inv.getArgument(0);
         rq.getApplicant().add(new AddCreditProtectionQuotationRqQuotationApplicantInner()); // dummy
         return rq;
     });
 
-    // Build response quotation with 2 applicants
+    // Mock V2 quotation with 2 applicants
     AddCreditProtectionQuotationV2RsQuotation quotation = new AddCreditProtectionQuotationV2RsQuotation();
     quotation.setApplicant(new ArrayList<>(List.of(
             new AddCreditProtectionQuotationV2RsQuotationApplicantInner(),
             new AddCreditProtectionQuotationV2RsQuotationApplicantInner()
     )));
 
-    // Wrap inside response body
-    AddCreditProtectionQuotationWarningRs responseBody = new AddCreditProtectionQuotationWarningRs();
-    responseBody.setQuotation(quotation);
-
-    ResponseEntity<AddCreditProtectionQuotationWarningRs> serviceResponse =
-            new ResponseEntity<>(responseBody, HttpStatus.CREATED);
-
     when(cpFac.getCreditProtectionQuotationV2(any(), any())).thenReturn(quotation);
+
+    // Mock final response service
+    AddCreditProtectionQuotationWarningRs finalResponse = new AddCreditProtectionQuotationWarningRs();
+    finalResponse.setQuotation(quotation);
+
+    when(loanCreditProtectionQuotationService.buildFinalResponseForLoanMultiCustomerLifeOnly(any()))
+            .thenReturn(finalResponse);
 
     // Act
     ResponseEntity<AddCreditProtectionQuotationWarningRs> response =
@@ -44,5 +47,6 @@ void testGetCpQuote_MultiCustomerLifeBranch() throws ApiException {
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
     assertThat(response.getBody()).isNotNull();
     assertThat(response.getBody().getQuotation()).isNotNull();
-    assertThat(response.getBody().getQuotation().getApplicant().size()).isEqualTo(1); // dummy removed
+    assertThat(response.getBody().getQuotation().getApplicant().size())
+            .isEqualTo(1); // controller should drop dummy
 }
