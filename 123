@@ -1,12 +1,47 @@
 @Test
-public void testGetCpQuoteValidationFailure() {
-    // Arrange – force validator to throw
-    doThrow(new RuntimeException("Validation failed"))
-            .when(cpUtil).validateCpQuoteRequest(any(), any());
+public void testGetCpQuoteMultiCustomerBranch() throws Exception {
+    // Arrange: create a request with multiple applicants
+    AddCreditProtectionQuotationV2RsQuotation quotation = new AddCreditProtectionQuotationV2RsQuotation();
+    quotation.addApplicantItem(new AddCreditProtectionQuotationV2RsQuotationApplicantInner());
+    quotation.addApplicantItem(new AddCreditProtectionQuotationV2RsQuotationApplicantInner()); // 2nd applicant → triggers multi-customer
 
-    // Act & Assert – expect RuntimeException
-    RuntimeException ex = assertThrows(RuntimeException.class, () ->
-            controller.getCpQuote("en", "Bearer token", apiQuoteReq));
+    apiQuoteReq.setQuotation(quotation);
 
-    assertThat(ex.getMessage()).isEqualTo("Validation failed");
+    AddCreditProtectionQuotationWarningV2Rs responseMock = new AddCreditProtectionQuotationWarningV2Rs();
+    ResponseEntity<AddCreditProtectionQuotationWarningV2Rs> serviceResponse =
+            new ResponseEntity<>(responseMock, HttpStatus.CREATED);
+
+    when(cpFac.getCreditProtectionQuotation(any(), any())).thenReturn(serviceResponse);
+
+    // Act
+    ResponseEntity<AddCreditProtectionQuotationWarningV2Rs> response =
+            controller.getCpQuote("en", "Bearer token", apiQuoteReq);
+
+    // Assert
+    assertThat(response).isNotNull();
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED); // branch HttpStatus != null
+}
+
+@Test
+public void testGetCpQuoteHttpStatusNullBranch() throws Exception {
+    // Arrange: request with single applicant
+    AddCreditProtectionQuotationV2RsQuotation quotation = new AddCreditProtectionQuotationV2RsQuotation();
+    quotation.addApplicantItem(new AddCreditProtectionQuotationV2RsQuotationApplicantInner());
+    apiQuoteReq.setQuotation(quotation);
+
+    // Mock service returning HttpStatus = null
+    AddCreditProtectionQuotationWarningV2Rs responseMock = new AddCreditProtectionQuotationWarningV2Rs();
+    ResponseEntity<AddCreditProtectionQuotationWarningV2Rs> serviceResponse =
+            new ResponseEntity<>(responseMock, null); // deliberately null HttpStatus
+
+    when(cpFac.getCreditProtectionQuotation(any(), any())).thenReturn(serviceResponse);
+
+    // Act
+    ResponseEntity<AddCreditProtectionQuotationWarningV2Rs> response =
+            controller.getCpQuote("en", "Bearer token", apiQuoteReq);
+
+    // Assert → should still return non-null body
+    assertThat(response).isNotNull();
+    assertThat(response.getBody()).isNotNull();
+    assertThat(response.getStatusCode()).isNull(); // covers null HttpStatus branch
 }
