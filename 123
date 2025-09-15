@@ -1,44 +1,49 @@
-private void testMultiCustomerLifeBranchFixed(String productType) throws Exception {
-    // Request setup
+private void runMultiCustomerLifeBranchTest(String productType) throws Exception {
+    // Build request
     AddCreditProtectionQuotationRq request = new AddCreditProtectionQuotationRq();
     AddCreditProtectionQuotationRqQuotation infoRq = new AddCreditProtectionQuotationRqQuotation();
     infoRq.setApplicant(new ArrayList<>(List.of(new AddCreditProtectionQuotationRqQuotationApplicantInner())));
     infoRq.setMultiCustomerLifeIndicator(true);
-
-    AddCreditProtectionQuotationRqQuotationCreditApplication creditApp =
+    AddCreditProtectionQuotationRqQuotationCreditApplication creditApp = 
             new AddCreditProtectionQuotationRqQuotationCreditApplication();
     creditApp.setProductTypeCd(productType);
     infoRq.setCreditApplication(creditApp);
     request.setQuotation(infoRq);
 
-    // Mock buildRequestBodyForMultiCustomerDiscount: adds dummy applicant
+    // Mock buildRequestBodyForMultiCustomerDiscount
     when(cpFac.buildRequestBodyForMultiCustomerDiscount(any())).thenAnswer(inv -> {
         AddCreditProtectionQuotationRqQuotation rq = inv.getArgument(0);
+        // add dummy applicant for controller to remove
         rq.getApplicant().add(new AddCreditProtectionQuotationRqQuotationApplicantInner());
         return rq;
     });
 
-    // Mock getCreditProtectionQuotationV2 to return non-null quotation with 2 applicants
+    // Mock getCreditProtectionQuotationV2
     AddCreditProtectionQuotationV2RsQuotation quotation = new AddCreditProtectionQuotationV2RsQuotation();
     quotation.setApplicant(new ArrayList<>(List.of(
             new AddCreditProtectionQuotationV2RsQuotationApplicantInner(),
-            new AddCreditProtectionQuotationV2RsQuotationApplicantInner() // dummy for removal
+            new AddCreditProtectionQuotationV2RsQuotationApplicantInner()
     )));
     when(cpFac.getCreditProtectionQuotationV2(any(), any())).thenReturn(quotation);
 
     // Act
-    ResponseEntity<AddCreditProtectionQuotationWarningRs> response =
+    ResponseEntity<AddCreditProtectionQuotationWarningRs> response = 
             controller.getCpQuoteWithAllPremium("en", "Bearer token", request);
 
-    // Assert
+    // Assertions
     assertThat(response).isNotNull();
     assertThat(response.getBody()).isNotNull();
     assertThat(response.getBody().getQuotation()).isNotNull();
+    assertThat(response.getBody().getQuotation().getApplicant()).isNotNull();
+    assertThat(response.getBody().getQuotation().getApplicant().size()).isEqualTo(1); // dummy removed
+}
 
-    List<AddCreditProtectionQuotationV2RsQuotationApplicantInner> applicants =
-            response.getBody().getQuotation().getApplicant();
+@Test
+void testMultiCustomerLifeBranch_LN2() throws Exception {
+    runMultiCustomerLifeBranchTest("LN2");
+}
 
-    // Controller removes dummy applicant
-    assertThat(applicants).isNotNull();
-    assertThat(applicants.size()).isEqualTo(1);
+@Test
+void testMultiCustomerLifeBranch_LN3() throws Exception {
+    runMultiCustomerLifeBranchTest("LN3");
 }
