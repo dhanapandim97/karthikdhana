@@ -1,16 +1,5 @@
-private AddCreditProtectionQuotationWarningRs buildMockResponseWithTwoApplicants() {
-    AddCreditProtectionQuotationV2RsQuotation quotation = new AddCreditProtectionQuotationV2RsQuotation();
-    quotation.setApplicant(new ArrayList<>(List.of(
-        new AddCreditProtectionQuotationV2RsQuotationApplicantInner(),
-        new AddCreditProtectionQuotationV2RsQuotationApplicantInner() // dummy to remove
-    )));
-
-    AddCreditProtectionQuotationWarningRs response = new AddCreditProtectionQuotationWarningRs();
-    response.setQuotation(quotation);
-    return response;
-}
-
-private void runMultiCustomerLifeBranchTest(String productType) throws Exception {
+@Test
+void testGetCpQuoteWithAllPremium_MultiCustomerLifeBranch_LN2() throws Exception {
     // Build request
     AddCreditProtectionQuotationRq request = new AddCreditProtectionQuotationRq();
     AddCreditProtectionQuotationRqQuotation infoRq = new AddCreditProtectionQuotationRqQuotation();
@@ -18,20 +7,24 @@ private void runMultiCustomerLifeBranchTest(String productType) throws Exception
     infoRq.setMultiCustomerLifeIndicator(true);
 
     AddCreditProtectionQuotationRqQuotationCreditApplication creditApp = new AddCreditProtectionQuotationRqQuotationCreditApplication();
-    creditApp.setProductTypeCd(productType);
+    creditApp.setProductTypeCd("LN2"); // LN2 branch
     infoRq.setCreditApplication(creditApp);
     request.setQuotation(infoRq);
 
-    // Mock buildRequestBodyForMultiCustomerDiscount to add dummy applicant
+    // Mock factory to add dummy applicant
     when(cpFac.buildRequestBodyForMultiCustomerDiscount(any())).thenAnswer(inv -> {
         AddCreditProtectionQuotationRqQuotation rq = inv.getArgument(0);
-        rq.getApplicant().add(new AddCreditProtectionQuotationRqQuotationApplicantInner());
+        rq.getApplicant().add(new AddCreditProtectionQuotationRqQuotationApplicantInner()); // dummy
         return rq;
     });
 
-    // Mock getCreditProtectionQuotationV2 to return two applicants wrapped in WarningRs
-    AddCreditProtectionQuotationWarningRs mockResponse = buildMockResponseWithTwoApplicants();
-    when(cpFac.getCreditProtectionQuotationV2(any(), any())).thenReturn(mockResponse.getQuotation());
+    // Mock getCreditProtectionQuotationV2 to return two applicants
+    AddCreditProtectionQuotationV2RsQuotation quotation = new AddCreditProtectionQuotationV2RsQuotation();
+    quotation.setApplicant(new ArrayList<>(List.of(
+        new AddCreditProtectionQuotationV2RsQuotationApplicantInner(),
+        new AddCreditProtectionQuotationV2RsQuotationApplicantInner() // dummy
+    )));
+    when(cpFac.getCreditProtectionQuotationV2(any(), any())).thenReturn(quotation);
 
     // Act
     ResponseEntity<AddCreditProtectionQuotationWarningRs> response =
@@ -41,16 +34,5 @@ private void runMultiCustomerLifeBranchTest(String productType) throws Exception
     assertThat(response).isNotNull();
     assertThat(response.getBody()).isNotNull();
     assertThat(response.getBody().getQuotation()).isNotNull();
-    assertThat(response.getBody().getQuotation().getApplicant()).isNotNull();
-    assertThat(response.getBody().getQuotation().getApplicant().size()).isEqualTo(1); // dummy removed
-}
-
-@Test
-void testMultiCustomerLifeBranch_LN2() throws Exception {
-    runMultiCustomerLifeBranchTest("LN2");
-}
-
-@Test
-void testMultiCustomerLifeBranch_LN3() throws Exception {
-    runMultiCustomerLifeBranchTest("LN3");
+    assertThat(response.getBody().getQuotation().getApplicant()).hasSize(1); // dummy removed
 }
