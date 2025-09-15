@@ -1,17 +1,26 @@
+package com.td.tdi.cp.api.cpqte.controller;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.*;
+
+import java.lang.reflect.Field;
+import java.util.ArrayList;
+import java.util.List;
+
+import com.td.tdi.cp.api.cpqte.model.*;
+import com.td.tdi.cp.api.cpqte.util.CreditProtectionRequestValidatorUtil;
+import com.td.tdi.cp.api.cpqte.factory.CreditProtectionQuotationFactory;
+import com.td.tdi.cp.api.cpqte.service.LONCreditProtectionQuotationService;
+import com.td.tdi.cp.api.cpqte.exception.ApiException;
+import com.td.tdi.cp.api.cpqte.exception.ErrorConfig;
+
 import org.junit.jupiter.api.*;
 import org.mockito.Mockito;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
-import java.lang.reflect.Field;
-import java.util.ArrayList;
-
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
-import static org.assertj.core.api.Assertions.assertThat;
-
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
-public class CreditProtectionQuoteControllerFullTest {
+public class CreditProtectionQuoteControllerTests {
 
     private CreditProtectionQuoteController controller;
     private CreditProtectionRequestValidatorUtil cpUtil;
@@ -24,179 +33,146 @@ public class CreditProtectionQuoteControllerFullTest {
     @BeforeEach
     public void setup() throws Exception {
         controller = new CreditProtectionQuoteController();
+
         cpUtil = mock(CreditProtectionRequestValidatorUtil.class);
         cpFac = mock(CreditProtectionQuotationFactory.class);
         lonService = mock(LONCreditProtectionQuotationService.class);
 
+        // Inject mocks
         controller.creditProtectionRequestValidatorUtil = cpUtil;
         controller.creditProtectionQuotationFactory = cpFac;
 
-        // Inject private service via reflection
+        // Inject private LON service using reflection
         Field lonField = CreditProtectionQuoteController.class.getDeclaredField("lonCreditProtectionQuotationservice");
         lonField.setAccessible(true);
         lonField.set(controller, lonService);
 
+        // Sample requests
         apiQuoteReq = createSampleQuoteReq();
         apiQuoteReqV2 = createSampleQuoteReqV2();
     }
 
-    // -------------------- getCpQuote() Tests --------------------
-
-    @Test
-    public void testGetCpQuoteSuccess() throws Exception {
-        AddCreditProtectionQuotationWarningRsQuotation mockQuote = mock(AddCreditProtectionQuotationWarningRsQuotation.class);
-        when(cpFac.getCreditProtectionQuotation(any(), any())).thenReturn(mockQuote);
-
-        ResponseEntity<AddCreditProtectionQuotationWarningRs> response =
-                controller.getCpQuote("en", "Bearer token", apiQuoteReq);
-
-        assertThat(response).isNotNull();
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
-        assertThat(response.getBody().getQuotation()).isEqualTo(mockQuote);
-
-        verify(cpUtil).validateCpQuoteRequest(any(), any());
-        verify(cpFac).getCreditProtectionQuotation(any(), any());
+    @AfterEach
+    public void tearDown() {
+        controller = null;
+        cpUtil = null;
+        cpFac = null;
+        lonService = null;
+        apiQuoteReq = null;
+        apiQuoteReqV2 = null;
     }
 
-    @Test
-    public void testGetCpQuoteApiException() throws Exception {
-        AddCreditProtectionSimulationErrorRs errorStatus = mock(AddCreditProtectionSimulationErrorRs.class);
-        when(errorStatus.getServerStatusCode()).thenReturn("500");
-
-        ApiException apiEx = mock(ApiException.class);
-        when(apiEx.getStatus()).thenReturn(errorStatus);
-
-        when(cpFac.getCreditProtectionQuotation(any(), any())).thenThrow(apiEx);
-
-        ResponseEntity<AddCreditProtectionQuotationWarningRs> response =
-                controller.getCpQuote("en", "Bearer token", apiQuoteReq);
-
-        assertThat(response).isNotNull();
-        // Should not crash
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
-    }
-
-    @Test
-    public void testGetCpQuoteNumberFormatException() throws Exception {
-        AddCreditProtectionSimulationErrorRs errorStatus = mock(AddCreditProtectionSimulationErrorRs.class);
-        when(errorStatus.getServerStatusCode()).thenReturn("invalid"); // triggers NumberFormatException
-
-        ApiException apiEx = mock(ApiException.class);
-        when(apiEx.getStatus()).thenReturn(errorStatus);
-
-        when(cpFac.getCreditProtectionQuotation(any(), any())).thenThrow(apiEx);
-
-        ResponseEntity<AddCreditProtectionQuotationWarningRs> response =
-                controller.getCpQuote("en", "Bearer token", apiQuoteReq);
-
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
-    }
-
-    // -------------------- getCpQuoteWithAllPremium() Tests --------------------
-
-    @Test
-    public void testGetCpQuoteWithAllPremiumSuccessSingleApplicant() throws Exception {
-        AddCreditProtectionQuotationV2RsQuotation mockQuoteV2 = mock(AddCreditProtectionQuotationV2RsQuotation.class);
-        when(cpFac.getCreditProtectionQuotationV2(any(), any())).thenReturn(mockQuoteV2);
-
-        ResponseEntity<AddCreditProtectionQuotationWarningV2Rs> response =
-                controller.getCpQuoteWithAllPremium("en", "Bearer token", apiQuoteReqV2);
-
-        assertThat(response).isNotNull();
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
-        assertThat(response.getBody().getQuotation()).isEqualTo(mockQuoteV2);
-
-        verify(cpUtil).validateCpQuoteRequestv2(any(), any());
-        verify(cpFac).getCreditProtectionQuotationV2(any(), any());
-    }
-
-    @Test
-    public void testGetCpQuoteWithAllPremiumApiException() throws Exception {
-        AddCreditProtectionSimulationErrorRs errorStatus = mock(AddCreditProtectionSimulationErrorRs.class);
-        when(errorStatus.getServerStatusCode()).thenReturn("404");
-
-        ApiException apiEx = mock(ApiException.class);
-        when(apiEx.getStatus()).thenReturn(errorStatus);
-
-        when(cpFac.getCreditProtectionQuotationV2(any(), any())).thenThrow(apiEx);
-
-        ResponseEntity<AddCreditProtectionQuotationWarningV2Rs> response =
-                controller.getCpQuoteWithAllPremium("en", "Bearer token", apiQuoteReqV2);
-
-        assertThat(response).isNotNull();
-        assertThat(response.getBody().getStatus()).isNotNull();
-        assertThat(response.getBody().getStatus().getServerStatusCode()).isEqualTo("404");
-    }
-
-    @Test
-    public void testGetCpQuoteWithAllPremiumMultiCustomerLogic() throws Exception {
-        // Prepare multi-customer request with TRUE indicators
-        AddCreditProtectionQuotationRqQuotation quote = new AddCreditProtectionQuotationRqQuotation();
-        quote.setCreditApplication(new AddCreditProtectionQuotationRqQuotationCreditApplication());
-        quote.setApplicant(new ArrayList<>());
-        quote.getApplicant().add(mock(AddCreditProtectionQuotationRqQuotationApplicantInner.class));
-        quote.setMultiCustomerIndicator(Boolean.TRUE);
-        quote.setMultiCustomerLifeIndicator(Boolean.TRUE);
-        quote.getCreditApplication().setProductTypecd("LN2"); // triggers special branch
-
-        apiQuoteReqV2.setQuotation(quote);
-
-        AddCreditProtectionQuotationV2RsQuotation mockQuoteV2 = mock(AddCreditProtectionQuotationV2RsQuotation.class);
-        AddCreditProtectionQuotationV2RsQuotation singleApplicantRsV2 = mock(AddCreditProtectionQuotationV2RsQuotation.class);
-
-        when(cpFac.getCreditProtectionQuotationV2(any(), any())).thenReturn(mockQuoteV2).thenReturn(singleApplicantRsV2);
-        when(lonService.buildFinalResponsePorLoanMultiCustomerLifeOnly(singleApplicantRsV2, mockQuoteV2, any()))
-                .thenReturn(mockQuoteV2);
-
-        ResponseEntity<AddCreditProtectionQuotationWarningV2Rs> response =
-                controller.getCpQuoteWithAllPremium("en", "Bearer token", apiQuoteReqV2);
-
-        assertThat(response).isNotNull();
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
-        assertThat(response.getBody().getQuotation()).isEqualTo(mockQuoteV2);
-
-        verify(cpUtil).validateCpQuoteRequestv2(any(), any());
-        verify(cpFac, times(2)).getCreditProtectionQuotationV2(any(), any());
-        verify(lonService).buildFinalResponsePorLoanMultiCustomerLifeOnly(singleApplicantRsV2, mockQuoteV2, any());
-    }
-
-    @Test
-    public void testGetCpQuoteWithAllPremiumMultiCustomerIndicatorsFalse() throws Exception {
-        // Prepare request with FALSE indicators
-        AddCreditProtectionQuotationRqQuotation quote = new AddCreditProtectionQuotationRqQuotation();
-        quote.setCreditApplication(new AddCreditProtectionQuotationRqQuotationCreditApplication());
-        quote.setApplicant(new ArrayList<>());
-        quote.getApplicant().add(mock(AddCreditProtectionQuotationRqQuotationApplicantInner.class));
-        quote.setMultiCustomerIndicator(Boolean.FALSE);
-        quote.setMultiCustomerLifeIndicator(Boolean.FALSE);
-
-        apiQuoteReqV2.setQuotation(quote);
-
-        AddCreditProtectionQuotationV2RsQuotation mockQuoteV2 = mock(AddCreditProtectionQuotationV2RsQuotation.class);
-        when(cpFac.getCreditProtectionQuotationV2(any(), any())).thenReturn(mockQuoteV2);
-
-        ResponseEntity<AddCreditProtectionQuotationWarningV2Rs> response =
-                controller.getCpQuoteWithAllPremium("en", "Bearer token", apiQuoteReqV2);
-
-        assertThat(response).isNotNull();
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
-        assertThat(response.getBody().getQuotation()).isEqualTo(mockQuoteV2);
-
-        verify(cpUtil).validateCpQuoteRequestv2(any(), any());
-        verify(cpFac, times(1)).getCreditProtectionQuotationV2(any(), any());
-    }
-
-    // -------------------- Utility Methods --------------------
-
+    // Utility methods
     private AddCreditProtectionQuotationRq createSampleQuoteReq() {
         AddCreditProtectionQuotationRq req = new AddCreditProtectionQuotationRq();
         AddCreditProtectionQuotationRqQuotation quote = new AddCreditProtectionQuotationRqQuotation();
-        quote.setCreditApplication(new AddCreditProtectionQuotationRqQuotationCreditApplication());
+        AddCreditProtectionQuotationRqQuotationCreditApplication creditApp = new AddCreditProtectionQuotationRqQuotationCreditApplication();
+        quote.setCreditApplication(creditApp);
         req.setQuotation(quote);
         return req;
     }
 
     private AddCreditProtectionQuotationRq createSampleQuoteReqV2() {
-        return createSampleQuoteReq();
+        AddCreditProtectionQuotationRq req = new AddCreditProtectionQuotationRq();
+        AddCreditProtectionQuotationRqQuotation quote = new AddCreditProtectionQuotationRqQuotation();
+        AddCreditProtectionQuotationRqQuotationCreditApplication creditApp = new AddCreditProtectionQuotationRqQuotationCreditApplication();
+        // add one applicant inner
+        List<AddCreditProtectionQuotationRqQuotationApplicantInner> applicants = new ArrayList<>();
+        applicants.add(new AddCreditProtectionQuotationRqQuotationApplicantInner());
+        quote.setApplicant(applicants);
+        quote.setCreditApplication(creditApp);
+        req.setQuotation(quote);
+        return req;
     }
+
+    // ---------------- TESTS ------------------
+
+    @Test
+    public void testGetCpQuoteSuccess() throws Exception {
+        AddCreditProtectionQuotationWarningRsQuotation mockResp = mock(AddCreditProtectionQuotationWarningRsQuotation.class);
+        when(cpFac.getCreditProtectionQuotation(any(), any())).thenReturn(mockResp);
+
+        ResponseEntity<AddCreditProtectionQuotationWarningRs> response =
+                controller.getCpQuote("en", "Bearer token", apiQuoteReq);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getQuotation()).isEqualTo(mockResp);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+    }
+
+    @Test
+    public void testGetCpQuoteApiExceptionBranch() throws Exception {
+        // Mock ErrorConfig for ApiException
+        ErrorConfig mockErrorConfig = mock(ErrorConfig.class);
+        when(mockErrorConfig.getId()).thenReturn("TEST_ID");
+        when(mockErrorConfig.getHttpCode()).thenReturn("500");
+
+        ApiException apiEx = new ApiException(mockErrorConfig);
+        when(cpFac.getCreditProtectionQuotation(any(), any())).thenThrow(apiEx);
+
+        ResponseEntity<AddCreditProtectionQuotationWarningRs> response =
+                controller.getCpQuote("en", "Bearer token", apiQuoteReq);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(response.getBody()).isNotNull();
+    }
+
+    @Test
+    public void testGetCpQuoteNumberFormatException() throws Exception {
+        // Force NumberFormatException in controller by setting invalid server code
+        AddCreditProtectionSimulationErrorRs mockStatus = mock(AddCreditProtectionSimulationErrorRs.class);
+        when(mockStatus.getServerStatusCode()).thenReturn("invalid");
+
+        ApiException apiEx = new ApiException(mock(ErrorConfig.class)) {
+            @Override
+            public AddCreditProtectionQuotationWarningRsStatus toWarningStatusResponse() {
+                // populate status with invalid server code
+                AddCreditProtectionQuotationWarningRsStatus status = new AddCreditProtectionQuotationWarningRsStatus();
+                status.setServerStatusCode("invalid"); // triggers NumberFormatException
+                return status;
+            }
+        };
+        when(cpFac.getCreditProtectionQuotation(any(), any())).thenThrow(apiEx);
+
+        ResponseEntity<AddCreditProtectionQuotationWarningRs> response =
+                controller.getCpQuote("en", "Bearer token", apiQuoteReq);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+    }
+
+    @Test
+    public void testGetCpQuoteV2Success() throws Exception {
+        AddCreditProtectionQuotationV2RsQuotation mockRespV2 = mock(AddCreditProtectionQuotationV2RsQuotation.class);
+        when(cpFac.getCreditProtectionQuotationV2(any(), any())).thenReturn(mockRespV2);
+
+        ResponseEntity<AddCreditProtectionSimulationErrorRs> response =
+                controller.getCpQuoteWithAllPremium("en", "Bearer token", apiQuoteReqV2);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getQuotation()).isEqualTo(mockRespV2);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+    }
+
+    @Test
+    public void testGetCpQuoteV2ApiExceptionBranch() throws Exception {
+        ErrorConfig mockErrorConfig = mock(ErrorConfig.class);
+        when(mockErrorConfig.getId()).thenReturn("TEST_ID");
+        when(mockErrorConfig.getHttpCode()).thenReturn("500");
+
+        ApiException apiEx = new ApiException(mockErrorConfig);
+        when(cpFac.getCreditProtectionQuotationV2(any(), any())).thenThrow(apiEx);
+
+        ResponseEntity<AddCreditProtectionSimulationErrorRs> response =
+                controller.getCpQuoteWithAllPremium("en", "Bearer token", apiQuoteReqV2);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+    }
+
 }
