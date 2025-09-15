@@ -1,47 +1,75 @@
 @Test
-public void testGetCpQuoteHttpStatusNotNullBranch() throws Exception {
-    // Arrange: request with single applicant
-    AddCreditProtectionQuotationV2RsQuotation quotation = new AddCreditProtectionQuotationV2RsQuotation();
-    quotation.addApplicantItem(new AddCreditProtectionQuotationV2RsQuotationApplicantInner());
-    apiQuoteReq.setQuotation(quotation);
+public void testGetCpQuoteMultiCustomerLifeIndicator_LN2() throws Exception {
+    AddCreditProtectionQuotationV2RqQuotation quotationInfoRq = new AddCreditProtectionQuotationV2RqQuotation();
+    quotationInfoRq.setApplicant(List.of(new AddCreditProtectionQuotationV2RqQuotationApplicantInner()));
+    quotationInfoRq.setMulticustomerIndicator(true);
+    quotationInfoRq.setMulticustomerLifeIndicator(true);
+    quotationInfoRq.setCreditApplication(new CreditApplication().productTypeCd("LN2"));
 
-    AddCreditProtectionQuotationWarningV2Rs responseMock = new AddCreditProtectionQuotationWarningV2Rs();
-    ResponseEntity<AddCreditProtectionQuotationWarningV2Rs> serviceResponse =
-            new ResponseEntity<>(responseMock, HttpStatus.CREATED); // explicit
+    AddCreditProtectionQuotationV2RsQuotation dummyResp = new AddCreditProtectionQuotationV2RsQuotation();
+    dummyResp.setApplicant(new ArrayList<>(List.of(new AddCreditProtectionQuotationV2RsQuotationApplicantInner(),
+                                                   new AddCreditProtectionQuotationV2RsQuotationApplicantInner())));
 
-    when(cpFac.getCreditProtectionQuotation(any(), any())).thenReturn(serviceResponse);
+    when(cpFac.buildRequestBodyForMulticustomerDiscount(any())).thenReturn(quotationInfoRq);
+    when(cpFac.getCreditProtectionQuotationV2(any(), any())).thenReturn(dummyResp);
+    when(loanCpQuoteService.buildFinalResponseForLoanMulticustomerLifeOnly(any(), any(), any()))
+        .thenReturn(dummyResp);
 
-    // Act
     ResponseEntity<AddCreditProtectionQuotationWarningV2Rs> response =
-            controller.getCpQuote("en", "Bearer token", apiQuoteReq);
+        controller.getCpQuote("en", "Bearer token", apiQuoteReqV2);
 
-    // Assert
-    assertThat(response).isNotNull();
     assertThat(response.getBody()).isNotNull();
-    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED); // branch HttpStatus != null
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+    // Ensure applicant[1] removed
+    assertThat(response.getBody().getQuotation().getApplicant().size()).isLessThanOrEqualTo(1);
 }
 
+
+
+
 @Test
-public void testGetCpQuoteHttpStatusDefaultBranch() throws Exception {
-    // Arrange: request with single applicant
-    AddCreditProtectionQuotationV2RsQuotation quotation = new AddCreditProtectionQuotationV2RsQuotation();
-    quotation.addApplicantItem(new AddCreditProtectionQuotationV2RsQuotationApplicantInner());
-    apiQuoteReq.setQuotation(quotation);
+public void testGetCpQuoteMultiCustomerOtherProduct() throws Exception {
+    AddCreditProtectionQuotationV2RqQuotation quotationInfoRq = new AddCreditProtectionQuotationV2RqQuotation();
+    quotationInfoRq.setApplicant(List.of(new AddCreditProtectionQuotationV2RqQuotationApplicantInner()));
+    quotationInfoRq.setMulticustomerIndicator(true);
+    quotationInfoRq.setMulticustomerLifeIndicator(true);
+    quotationInfoRq.setCreditApplication(new CreditApplication().productTypeCd("LN1")); // not LN2/LN3
 
-    AddCreditProtectionQuotationWarningV2Rs responseMock = new AddCreditProtectionQuotationWarningV2Rs();
+    AddCreditProtectionQuotationV2RsQuotation dummyResp = new AddCreditProtectionQuotationV2RsQuotation();
+    dummyResp.setApplicant(new ArrayList<>(List.of(new AddCreditProtectionQuotationV2RsQuotationApplicantInner(),
+                                                   new AddCreditProtectionQuotationV2RsQuotationApplicantInner())));
 
-    // Construct with body only → defaults to 200 OK
-    ResponseEntity<AddCreditProtectionQuotationWarningV2Rs> serviceResponse =
-            ResponseEntity.ok(responseMock);
+    when(cpFac.buildRequestBodyForMulticustomerDiscount(any())).thenReturn(quotationInfoRq);
+    when(cpFac.getCreditProtectionQuotationV2(any(), any())).thenReturn(dummyResp);
 
-    when(cpFac.getCreditProtectionQuotation(any(), any())).thenReturn(serviceResponse);
-
-    // Act
     ResponseEntity<AddCreditProtectionQuotationWarningV2Rs> response =
-            controller.getCpQuote("en", "Bearer token", apiQuoteReq);
+        controller.getCpQuote("en", "Bearer token", apiQuoteReqV2);
 
-    // Assert
-    assertThat(response).isNotNull();
     assertThat(response.getBody()).isNotNull();
-    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK); // branch default HttpStatus
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+    // No removal of applicant since else path
+    assertThat(response.getBody().getQuotation().getApplicant().size()).isGreaterThanOrEqualTo(2);
+}
+
+
+
+@Test
+public void testGetCpQuoteSingleCustomerBranch() throws Exception {
+    AddCreditProtectionQuotationV2RqQuotation quotationInfoRq = new AddCreditProtectionQuotationV2RqQuotation();
+    quotationInfoRq.setApplicant(List.of(new AddCreditProtectionQuotationV2RsQuotationApplicantInner()));
+    quotationInfoRq.setMulticustomerIndicator(false);
+    quotationInfoRq.setMulticustomerLifeIndicator(false);
+    quotationInfoRq.setCreditApplication(new CreditApplication().productTypeCd("LN1"));
+
+    AddCreditProtectionQuotationV2RsQuotation dummyResp = new AddCreditProtectionQuotationV2RsQuotation();
+    dummyResp.setApplicant(new ArrayList<>(List.of(new AddCreditProtectionQuotationV2RsQuotationApplicantInner())));
+
+    when(cpFac.getCreditProtectionQuotationV2(any(), any())).thenReturn(dummyResp);
+
+    ResponseEntity<AddCreditProtectionQuotationWarningV2Rs> response =
+        controller.getCpQuote("en", "Bearer token", apiQuoteReqV2);
+
+    assertThat(response.getBody()).isNotNull();
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+    assertThat(response.getBody().getQuotation().getApplicant().size()).isEqualTo(1);
 }
