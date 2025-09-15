@@ -4,15 +4,12 @@ void testGetCpQuoteWithAllPremium_MultiCustomerLifeOnlyBranch() throws Exception
     AddCreditProtectionQuotationRq request = new AddCreditProtectionQuotationRq();
     AddCreditProtectionQuotationRqQuotation infoRq = new AddCreditProtectionQuotationRqQuotation();
 
-    // Single applicant initially
-    infoRq.setApplicant(new ArrayList<>(
-        List.of(new AddCreditProtectionQuotationRqQuotationApplicantInner())
-    ));
+    infoRq.setApplicant(new ArrayList<>(List.of(new AddCreditProtectionQuotationRqQuotationApplicantInner())));
     infoRq.setMultiCustomerLifeIndicator(true);
 
     AddCreditProtectionQuotationRqQuotationCreditApplication creditApp =
-            new AddCreditProtectionQuotationRqQuotationCreditApplication();
-    creditApp.setProductTypeCd("LN2"); // or "LN3" to hit the branch
+        new AddCreditProtectionQuotationRqQuotationCreditApplication();
+    creditApp.setProductTypeCd("LN2"); // or "LN3"
     infoRq.setCreditApplication(creditApp);
     request.setQuotation(infoRq);
 
@@ -20,36 +17,37 @@ void testGetCpQuoteWithAllPremium_MultiCustomerLifeOnlyBranch() throws Exception
     when(cpFac.buildRequestBodyForMultiCustomerDiscount(any()))
         .thenAnswer(inv -> {
             AddCreditProtectionQuotationRqQuotation rq = inv.getArgument(0);
-            rq.getApplicant().add(new AddCreditProtectionQuotationRqQuotationApplicantInner()); // add dummy
+            rq.getApplicant().add(new AddCreditProtectionQuotationRqQuotationApplicantInner());
             return rq;
         });
 
-    // First quotation (with 2 applicants)
+    // First quotation
     AddCreditProtectionQuotationV2RsQuotation firstQuotation = new AddCreditProtectionQuotationV2RsQuotation();
     firstQuotation.setApplicant(new ArrayList<>(List.of(
         new AddCreditProtectionQuotationV2RsQuotationApplicantInner(),
         new AddCreditProtectionQuotationV2RsQuotationApplicantInner()
     )));
 
-    // Second quotation (also with 2 applicants, so remove(1) is safe)
-    AddCreditProtectionQuotationV2RsQuotation secondQuotation = new AddCreditProtectionQuotationV2RsQuotation();
-    secondQuotation.setApplicant(new ArrayList<>(List.of(
+    // Mock cpFac to return first quotation
+    when(cpFac.getCreditProtectionQuotationV2(any(), any())).thenReturn(firstQuotation);
+
+    // Mock lonCreditProtectionQuotationService.buildFinalResponseForLoanMultiCustomerLifeOnly
+    AddCreditProtectionQuotationV2RsQuotation finalQuotation = new AddCreditProtectionQuotationV2RsQuotation();
+    finalQuotation.setApplicant(new ArrayList<>(List.of(
         new AddCreditProtectionQuotationV2RsQuotationApplicantInner(),
         new AddCreditProtectionQuotationV2RsQuotationApplicantInner()
     )));
-
-    // Return two different objects for two calls
-    when(cpFac.getCreditProtectionQuotationV2(any(), any()))
-        .thenReturn(firstQuotation, secondQuotation);
+    when(lonCreditProtectionQuotationService.buildFinalResponseForLoanMultiCustomerLifeOnly(
+            any(), any(), any()))
+        .thenReturn(finalQuotation);
 
     // Act
     ResponseEntity<AddCreditProtectionQuotationWarningRs> response =
-            controller.getCpQuoteWithAllPremium("en", "Bearer token", request);
+        controller.getCpQuoteWithAllPremium("en", "Bearer token", request);
 
     // Assert
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
     assertThat(response.getBody()).isNotNull();
     assertThat(response.getBody().getQuotation()).isNotNull();
-    // after dummy removal, only 1 applicant should remain
-    assertThat(response.getBody().getQuotation().getApplicant().size()).isEqualTo(1);
+    assertThat(response.getBody().getQuotation().getApplicant().size()).isEqualTo(1); // dummy removed
 }
