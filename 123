@@ -1,36 +1,138 @@
-@Test
-public void testGetCpQuoteV2ApiExceptionBranch() throws Exception {
-    // Mock ApiErrorHandler static
-    MockedStatic<ApiErrorHandler> mockedHandler = mockStatic(ApiErrorHandler.class);
-    ApiErrorHandler mockHandlerInstance = mock(ApiErrorHandler.class);
-    mockedHandler.when(ApiErrorHandler::getInstance).thenReturn(mockHandlerInstance);
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
 
-    // Create a fake Error object to avoid NPE
-    com.td.tdi.cp.api.cpqte.model.errorhandling.Error fakeError = mock(com.td.tdi.cp.api.cpqte.model.errorhandling.Error.class);
-    when(fakeError.getServerStatusCode()).thenReturn("500");
-    when(fakeError.getStatusCode()).thenReturn(500);
-    when(fakeError.getStatusDesc()).thenReturn("Test error");
+import java.util.ArrayList;
+import java.util.List;
 
-    // Mock methods in ApiErrorHandler
-    when(mockHandlerInstance.getAdditionalErrors(anyString()))
-            .thenReturn(List.of(fakeError));
-    when(mockHandlerInstance.getServerStatusCode(anyString())).thenReturn("500");
-    when(mockHandlerInstance.getSeverity(anyString())).thenReturn("CRITICAL"); // use a valid value in your model if required
+import org.junit.jupiter.api.*;
+import org.mockito.MockedStatic;
+import org.mockito.Mockito;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 
-    // Create ApiException
-    ErrorConfig mockErrorConfig = mock(ErrorConfig.class);
-    when(mockErrorConfig.getId()).thenReturn("TEST_ID");
-    ApiException apiEx = new ApiException(mockErrorConfig);
+import com.td.tdi.cp.api.cpqte.controller.CreditProtectionQuoteController;
+import com.td.tdi.cp.api.cpqte.errorhandling.ApiException;
+import com.td.tdi.cp.api.cpqte.errorhandling.ApiErrorHandler;
+import com.td.tdi.cp.api.cpqte.errorhandling.ErrorConfig;
+import com.td.tdi.cp.api.cpqte.model.Status;
+import com.td.tdi.cp.api.cpqte.model.errorhandling.AddError;
+import com.td.tdi.cp.api.cpqte.model.AddCreditProtectionQuotationV2RsQuotation;
+import com.td.tdi.cp.api.cpqte.model.AddCreditProtectionQuotationV2RsQuotationApplicantInner;
+import com.td.tdi.cp.api.cpqte.model.AddCreditProtectionSimulationErrorRs;
+import com.td.tdi.cp.api.cpqte.service.CreditProtectionQuotationFactory;
 
-    // Mock the factory to throw exception
-    when(cpFac.getCreditProtectionQuotationV2(any(), any())).thenThrow(apiEx);
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
+public class CreditProtectionQuoteControllerV2Tests {
 
-    ResponseEntity<AddCreditProtectionSimulationErrorRs> response =
-            controller.getCpQuoteWithAllPremium("en", "Bearer token", apiQuoteReqV2);
+    private CreditProtectionQuoteController controller;
+    private CreditProtectionQuotationFactory cpFac;
 
-    assertThat(response).isNotNull();
-    assertThat(response.getBody()).isNotNull();
-    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+    private AddCreditProtectionQuotationV2RsQuotation apiQuoteReqV2;
 
-    mockedHandler.close(); // Release static mock
+    @BeforeEach
+    public void setup() {
+        controller = new CreditProtectionQuoteController();
+        cpFac = mock(CreditProtectionQuotationFactory.class);
+        controller.creditProtectionQuotationFactory = cpFac;
+
+        // Sample input
+        apiQuoteReqV2 = new AddCreditProtectionQuotationV2RsQuotation();
+        AddCreditProtectionQuotationV2RsQuotationApplicantInner applicant = new AddCreditProtectionQuotationV2RsQuotationApplicantInner();
+        apiQuoteReqV2.addApplicantItem(applicant);
+    }
+
+    @AfterEach
+    public void tearDown() {
+        controller = null;
+        cpFac = null;
+        apiQuoteReqV2 = null;
+    }
+
+    @Test
+    public void testGetCpQuoteV2Success() throws Exception {
+        // Mock successful factory response
+        AddCreditProtectionQuotationV2RsQuotation mockResponse = new AddCreditProtectionQuotationV2RsQuotation();
+        when(cpFac.getCreditProtectionQuotationV2(any(), any())).thenReturn(mockResponse);
+
+        ResponseEntity<AddCreditProtectionQuotationV2RsQuotation> response =
+                controller.getCpQuoteWithAllPremium("en", "Bearer token", apiQuoteReqV2);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+    }
+
+    @Test
+    public void testGetCpQuoteV2ApiExceptionBranch() throws Exception {
+        // Mock ApiErrorHandler static
+        MockedStatic<ApiErrorHandler> mockedHandler = mockStatic(ApiErrorHandler.class);
+        ApiErrorHandler mockHandlerInstance = mock(ApiErrorHandler.class);
+        mockedHandler.when(ApiErrorHandler::getInstance).thenReturn(mockHandlerInstance);
+
+        // Fake AddError to avoid NPE
+        AddError fakeError = mock(AddError.class);
+        when(fakeError.getAddServerStatusCode()).thenReturn("500");
+        when(fakeError.getStatusCode()).thenReturn(500);
+        when(fakeError.getStatusDesc()).thenReturn("Test error");
+
+        // Mock ApiErrorHandler methods
+        when(mockHandlerInstance.getAdditionalErrors(anyString())).thenReturn(List.of(fakeError));
+        when(mockHandlerInstance.getServerStatusCode(anyString())).thenReturn("500");
+        when(mockHandlerInstance.getSeverity(anyString())).thenReturn("CRITICAL");
+
+        // Create ApiException
+        ErrorConfig mockErrorConfig = mock(ErrorConfig.class);
+        when(mockErrorConfig.getId()).thenReturn("TEST_ID");
+        ApiException apiEx = new ApiException(mockErrorConfig);
+
+        // Mock the factory to throw exception
+        when(cpFac.getCreditProtectionQuotationV2(any(), any())).thenThrow(apiEx);
+
+        ResponseEntity<AddCreditProtectionSimulationErrorRs> response =
+                controller.getCpQuoteWithAllPremium("en", "Bearer token", apiQuoteReqV2);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+
+        mockedHandler.close();
+    }
+
+    @Test
+    public void testGetCpQuoteV2NumberFormatExceptionBranch() throws Exception {
+        // Mock ApiErrorHandler static
+        MockedStatic<ApiErrorHandler> mockedHandler = mockStatic(ApiErrorHandler.class);
+        ApiErrorHandler mockHandlerInstance = mock(ApiErrorHandler.class);
+        mockedHandler.when(ApiErrorHandler::getInstance).thenReturn(mockHandlerInstance);
+
+        // Mock AddError with invalid code to trigger NumberFormatException
+        AddError fakeError = mock(AddError.class);
+        when(fakeError.getAddServerStatusCode()).thenReturn("INVALID"); // not parseable
+        when(fakeError.getStatusCode()).thenReturn(500);
+        when(fakeError.getStatusDesc()).thenReturn("Test error");
+
+        when(mockHandlerInstance.getAdditionalErrors(anyString())).thenReturn(List.of(fakeError));
+        when(mockHandlerInstance.getServerStatusCode(anyString())).thenReturn("INVALID");
+        when(mockHandlerInstance.getSeverity(anyString())).thenReturn("CRITICAL");
+
+        // ApiException
+        ErrorConfig mockErrorConfig = mock(ErrorConfig.class);
+        when(mockErrorConfig.getId()).thenReturn("TEST_ID");
+        ApiException apiEx = new ApiException(mockErrorConfig);
+
+        when(cpFac.getCreditProtectionQuotationV2(any(), any())).thenThrow(apiEx);
+
+        ResponseEntity<AddCreditProtectionSimulationErrorRs> response =
+                controller.getCpQuoteWithAllPremium("en", "Bearer token", apiQuoteReqV2);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getBody()).isNotNull();
+        // Controller defaults to CREATED if NumberFormatException occurs
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+
+        mockedHandler.close();
+    }
+
+    // Additional tests for multi-customer logic can be added similarly to cover branches
 }
