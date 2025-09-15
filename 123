@@ -7,7 +7,7 @@ void testGetCpQuoteWithAllPremium_MultiCustomerLifeOnlyBranch() throws Exception
 
     AddCreditProtectionQuotationRqQuotationCreditApplication creditApp =
         new AddCreditProtectionQuotationRqQuotationCreditApplication();
-    creditApp.setProductTypeCd("LN2"); // branch condition
+    creditApp.setProductTypeCd("LN2"); // or "LN3"
     infoRq.setCreditApplication(creditApp);
     request.setQuotation(infoRq);
 
@@ -17,20 +17,18 @@ void testGetCpQuoteWithAllPremium_MultiCustomerLifeOnlyBranch() throws Exception
         return rq;
     });
 
-    // quotation with 2 applicants (for remove(1))
-    AddCreditProtectionQuotationV2RsQuotation quotationWithTwoApplicants =
-        new AddCreditProtectionQuotationV2RsQuotation();
-    quotationWithTwoApplicants.setApplicant(new ArrayList<>(List.of(
-        new AddCreditProtectionQuotationV2RsQuotationApplicantInner(),
-        new AddCreditProtectionQuotationV2RsQuotationApplicantInner()
-    )));
-
-    // return same object twice so both calls have 2 applicants
+    // always return fresh quotation with 2 applicants
     when(cpFac.getCreditProtectionQuotationV2(any(), any()))
-        .thenReturn(quotationWithTwoApplicants)
-        .thenReturn(quotationWithTwoApplicants);
+        .thenAnswer(inv -> {
+            AddCreditProtectionQuotationV2RsQuotation q = new AddCreditProtectionQuotationV2RsQuotation();
+            q.setApplicant(new ArrayList<>(List.of(
+                new AddCreditProtectionQuotationV2RsQuotationApplicantInner(),
+                new AddCreditProtectionQuotationV2RsQuotationApplicantInner()
+            )));
+            return q;
+        });
 
-    // merged final response
+    // mock merge response with only 1 applicant (after dummy removal)
     AddCreditProtectionQuotationV2RsQuotation mergedQuotation =
         new AddCreditProtectionQuotationV2RsQuotation();
     mergedQuotation.setApplicant(new ArrayList<>(List.of(
@@ -40,11 +38,13 @@ void testGetCpQuoteWithAllPremium_MultiCustomerLifeOnlyBranch() throws Exception
         .buildFinalResponseForLoanMultiCustomerLifeOnly(any(), any(), any()))
         .thenReturn(mergedQuotation);
 
+    // Act
     ResponseEntity<AddCreditProtectionQuotationWarningV2Rs> response =
         controller.getCpQuoteWithAllPremium("en", "Bearer token", request);
 
+    // Assert
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
     assertThat(response.getBody()).isNotNull();
     assertThat(response.getBody().getQuotation()).isNotNull();
-    assertThat(response.getBody().getQuotation().getApplicant()).hasSize(1); // after removal
+    assertThat(response.getBody().getQuotation().getApplicant()).hasSize(1); // dummy removed
 }
