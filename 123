@@ -1,41 +1,22 @@
 @Test
-void testGetCpQuote_MultiCustomerLifeBranch_LN2() throws Exception {
-    testMultiCustomerLifeBranch("LN2");
-}
-
-@Test
-void testGetCpQuote_MultiCustomerLifeBranch_LN3() throws Exception {
-    testMultiCustomerLifeBranch("LN3");
-}
-
-private void testMultiCustomerLifeBranch(String productType) throws Exception {
+void testGetCpQuote_HttpStatusIfBranch() throws Exception {
     AddCreditProtectionQuotationRq request = new AddCreditProtectionQuotationRq();
     AddCreditProtectionQuotationRqQuotation infoRq = new AddCreditProtectionQuotationRqQuotation();
-    infoRq.setApplicant(new ArrayList<>(List.of(new AddCreditProtectionQuotationRqQuotationApplicantInner())));
-    infoRq.setMultiCustomerLifeIndicator(true);
-
-    AddCreditProtectionQuotationRqQuotationCreditApplication creditApp = new AddCreditProtectionQuotationRqQuotationCreditApplication();
-    creditApp.setProductTypeCd(productType);
-    infoRq.setCreditApplication(creditApp);
+    infoRq.setApplicant(List.of(new AddCreditProtectionQuotationRqQuotationApplicantInner()));
     request.setQuotation(infoRq);
 
-    when(cpFac.buildRequestBodyForMultiCustomerDiscount(any())).thenAnswer(inv -> {
-        AddCreditProtectionQuotationRqQuotation rq = inv.getArgument(0);
-        rq.getApplicant().add(new AddCreditProtectionQuotationRqQuotationApplicantInner()); // dummy
-        return rq;
-    });
+    // Mock cpFac to throw ApiException with valid numeric server status code
+    ErrorConfig mockErrorConfig = mock(ErrorConfig.class);
+    when(mockErrorConfig.getId()).thenReturn("TEST_ID");
+    ApiException apiEx = mock(ApiException.class);
+    AddCreditProtectionQuotationWarningRsStatus statusMock = mock(AddCreditProtectionQuotationWarningRsStatus.class);
+    when(apiEx.toWarningStatusV2Response()).thenReturn(statusMock);
+    when(statusMock.getServerStatusCode()).thenReturn("201"); // valid numeric
+    when(cpFac.getCreditProtectionQuotationV2(any(), any())).thenThrow(apiEx);
 
-    AddCreditProtectionQuotationV2RsQuotation quotation = new AddCreditProtectionQuotationV2RsQuotation();
-    quotation.setApplicant(new ArrayList<>(List.of(
-        new AddCreditProtectionQuotationV2RsQuotationApplicantInner(),
-        new AddCreditProtectionQuotationV2RsQuotationApplicantInner()
-    )));
-    when(cpFac.getCreditProtectionQuotationV2(any(), any())).thenReturn(quotation);
+    ResponseEntity<AddCreditProtectionQuotationWarningRs> response =
+        controller.getCpQuoteWithAllPremium("en", "Bearer token", request);
 
-    ResponseEntity<AddCreditProtectionQuotationWarningRs> response = controller.getCpQuoteWithAllPremium("en", "Bearer token", request);
-
-    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
-    assertThat(response.getBody()).isNotNull();
-    assertThat(response.getBody().getQuotation()).isNotNull();
-    assertThat(response.getBody().getQuotation().getApplicant().size()).isEqualTo(1); // dummy removed
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED); // 201 branch hit
+    assertThat(response.getBody().getStatus()).isEqualTo(statusMock);
 }
