@@ -1,31 +1,28 @@
-@Test
-void testGetCpQuote_HttpStatusNullBranch() throws Exception {
-    // Prepare request
-    AddCreditProtectionQuotationRq request = new AddCreditProtectionQuotationRq();
-    AddCreditProtectionQuotationRqQuotation infoRq = new AddCreditProtectionQuotationRqQuotation();
-    infoRq.setApplicant(List.of(new AddCreditProtectionQuotationRqQuotationApplicantInner()));
-    request.setQuotation(infoRq);
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.Test;
+import org.mockito.MockedConstruction;
+import org.mockito.Mockito;
 
-    // Mock ApiException
-    ErrorConfig mockErrorConfig = mock(ErrorConfig.class);
-    when(mockErrorConfig.getId()).thenReturn("TEST_ID");
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 
-    ApiException apiEx = mock(ApiException.class);
-    AddCreditProtectionQuotationWarningRsStatus statusMock = mock(AddCreditProtectionQuotationWarningRsStatus.class);
+class MyServiceTest {
 
-    // Return a non-numeric server status code to simulate NumberFormatException
-    when(statusMock.getServerStatusCode()).thenReturn("INVALID_CODE");
-    when(apiEx.toWarningStatusResponse()).thenReturn(statusMock);
+    @Test
+    void testReadValueReturnsNullWhenNewObjectMapperInsideMethod() throws Exception {
+        // 👇 Intercept all "new ObjectMapper()" calls
+        try (MockedConstruction<ObjectMapper> mocked = Mockito.mockConstruction(ObjectMapper.class,
+                (mock, context) -> {
+                    // Stub readValue to return null
+                    Mockito.when(mock.readValue(any(String.class), eq(MyDto.class)))
+                           .thenReturn(null);
+                })) {
 
-    // Force cpFac to throw ApiException
-    when(cpFac.getCreditProtectionQuotation(any(), any())).thenThrow(apiEx);
+            MyService service = new MyService();
+            MyDto result = service.parse("{ bad json }");
 
-    // Call the controller method
-    ResponseEntity<AddCreditProtectionQuotationWarningRs> response =
-        controller.getCpQuote("en", "Bearer token", request);
-
-    // Assert: HttpStatus branch where conversion fails
-    assertThat(response).isNotNull();
-    assertThat(response.getBody()).isNotNull();
-    assertThat(response.getBody().getStatus()).isEqualTo(statusMock);
+            assertNull(result); // ✅ null returned, no exception
+        }
+    }
 }
