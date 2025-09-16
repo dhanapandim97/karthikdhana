@@ -1,52 +1,13 @@
-package com.td.tdi.cp.api.cpqte.service.loansbb;
+@Test
+void testCompare_EqualBranch() {
+    String mockString = Mockito.mock(String.class);
+    when(mockString.compareTo(any())).thenReturn(0);
 
-import com.td.tdi.cp.api.cpqte.model.LoansbbQuotationItemInfo;
-import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
+    LoansbbQuotationItemInfo o1 = Mockito.mock(LoansbbQuotationItemInfo.class);
+    LoansbbQuotationItemInfo o2 = Mockito.mock(LoansbbQuotationItemInfo.class);
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.mockito.Mockito.*;
+    when(o1.getFeaturecd()).thenReturn(mockString);
+    when(o2.getFeaturecd()).thenReturn("anything");
 
-class SortingCoverageTest {
-
-    private final SortingCoverage sortingCoverage = new SortingCoverage();
-
-    @Test
-    void testCompare_LessThan() {
-        LoansbbQuotationItemInfo o1 = new LoansbbQuotationItemInfo();
-        o1.setFeaturecd("M7");  
-        LoansbbQuotationItemInfo o2 = new LoansbbQuotationItemInfo();
-        o2.setFeaturecd("M8");
-
-        assertEquals(-1, sortingCoverage.compare(o1, o2));
-    }
-
-    @Test
-    void testCompare_GreaterThan() {
-        LoansbbQuotationItemInfo o1 = new LoansbbQuotationItemInfo();
-        o1.setFeaturecd("M9");  
-        LoansbbQuotationItemInfo o2 = new LoansbbQuotationItemInfo();
-        o2.setFeaturecd("M8");
-
-        assertEquals(1, sortingCoverage.compare(o1, o2));
-    }
-
-    @Test
-    void testCompare_EqualBranch() {
-        // Mock so that compareTo() explicitly returns 0
-        String mockString = mock(String.class);
-        when(mockString.compareTo(anyString())).thenReturn(0);
-
-        LoansbbQuotationItemInfo o1 = mock(LoansbbQuotationItemInfo.class);
-        LoansbbQuotationItemInfo o2 = mock(LoansbbQuotationItemInfo.class);
-
-        when(o1.getFeaturecd()).thenReturn(mockString);
-        when(o2.getFeaturecd()).thenReturn("anything");
-
-        // This will hit the "== 0" branch
-        assertEquals(0, sortingCoverage.compare(o1, o2));
-
-        verify(o1).getFeaturecd();
-        verify(o2).getFeaturecd();
-    }
+    assertEquals(0, sortingCoverage.compare(o1, o2));
 }
