@@ -1,28 +1,46 @@
-import com.fasterxml.jackson.databind.ObjectMapper;
+package com.td.tdi.cp.api.cpqte.service.loansbb;
+
+import com.td.tdi.cp.api.cpqte.model.LoansbbQuotationItemInfo;
 import org.junit.jupiter.api.Test;
-import org.mockito.MockedConstruction;
-import org.mockito.Mockito;
+import static org.junit.jupiter.api.Assertions.*;
 
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
+class SortingCoverageTest {
 
-class MyServiceTest {
+    private final SortingCoverage sortingCoverage = new SortingCoverage();
 
     @Test
-    void testReadValueReturnsNullWhenNewObjectMapperInsideMethod() throws Exception {
-        // 👇 Intercept all "new ObjectMapper()" calls
-        try (MockedConstruction<ObjectMapper> mocked = Mockito.mockConstruction(ObjectMapper.class,
-                (mock, context) -> {
-                    // Stub readValue to return null
-                    Mockito.when(mock.readValue(any(String.class), eq(MyDto.class)))
-                           .thenReturn(null);
-                })) {
+    void testCompare_LessThan() {
+        LoansbbQuotationItemInfo o1 = new LoansbbQuotationItemInfo();
+        o1.setFeaturecd("M7");  // smaller than M8
+        LoansbbQuotationItemInfo o2 = new LoansbbQuotationItemInfo();
+        o2.setFeaturecd("M8");
 
-            MyService service = new MyService();
-            MyDto result = service.parse("{ bad json }");
+        int result = sortingCoverage.compare(o1, o2);
 
-            assertNull(result); // ✅ null returned, no exception
-        }
+        assertEquals(-1, result);
+    }
+
+    @Test
+    void testCompare_GreaterThan() {
+        LoansbbQuotationItemInfo o1 = new LoansbbQuotationItemInfo();
+        o1.setFeaturecd("M9");  // greater than M8
+        LoansbbQuotationItemInfo o2 = new LoansbbQuotationItemInfo();
+        o2.setFeaturecd("M8");
+
+        int result = sortingCoverage.compare(o1, o2);
+
+        assertEquals(1, result);
+    }
+
+    @Test
+    void testCompare_Equal() {
+        LoansbbQuotationItemInfo o1 = new LoansbbQuotationItemInfo();
+        o1.setFeaturecd("M7");
+        LoansbbQuotationItemInfo o2 = new LoansbbQuotationItemInfo();
+        o2.setFeaturecd("M7");
+
+        int result = sortingCoverage.compare(o1, o2);
+
+        assertEquals(0, result);
     }
 }
