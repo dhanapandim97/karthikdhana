@@ -1,42 +1,20 @@
-import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
+@Test
+void testEnglishBranch_FrAfterEn() {
+    PropertiesFileReader reader = createReaderWith("R1", "SomeText[EN]Hello[FR]Bonjour");
+    String result = reader.getKeyValueItem("R1", ErrorDisplayLanguage.ENGLISH);
+    assertTrue(result.contains("Hello"), "Should extract English text when FR comes after EN");
+}
 
-import java.util.Properties;
+@Test
+void testFinalReturnPrefixPlusValue_DefaultCase() {
+    PropertiesFileReader reader = createReaderWith("R2", "NoFlagsHere");
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
+    // Mock a fake language that isn’t ENGLISH or FRENCH
+    ErrorDisplayLanguage fakeLang = mock(ErrorDisplayLanguage.class);
+    when(fakeLang.getLangStr()).thenReturn("XX");
 
-class PropertiesFileReaderBranchesTest {
+    String result = reader.getKeyValueItem("R2", fakeLang);
 
-    private PropertiesFileReader createReaderWith(String key, String value) {
-        Properties props = new Properties();
-        props.setProperty(key, value);
-
-        try (var mockedApi = Mockito.mockStatic(ApiConfig.class)) {
-            ApiConfig apiConfig = mock(ApiConfig.class);
-            when(ApiConfig.getInstance()).thenReturn(apiConfig);
-            when(apiConfig.getPropertiesConfig("testfile")).thenReturn(props);
-            return new PropertiesFileReader("testfile");
-        }
-    }
-
-    @Test
-    void testEnglishBranch_FrAfterEn() {
-        // EN flag comes before FR flag → should hit (frFlagIndex >= 0 && frFlagIndex > enFlagIndex)
-        PropertiesFileReader reader = createReaderWith("R1", "Reason[EN]Hello[FR]Bonjour");
-        String result = reader.getKeyValueItem("R1", ErrorDisplayLanguage.ENGLISH);
-        assertTrue(result.contains("Hello"), "Should return English text when FR after EN");
-    }
-
-    @Test
-    void testFinalReturnPrefixPlusValue_DefaultCase() {
-        // Fake enum to trigger default branch → final return prefix + value
-        PropertiesFileReader reader = createReaderWith("R2", "NoFlagsHere");
-
-        ErrorDisplayLanguage fakeLang = mock(ErrorDisplayLanguage.class);
-        when(fakeLang.getLangStr()).thenReturn("ZZ");
-
-        String result = reader.getKeyValueItem("R2", fakeLang);
-        assertEquals("R2:NoFlagsHere", result, "Should hit final return prefix+value");
-    }
+    // This should come from the very last "return prefix + value;"
+    assertEquals("R2:NoFlagsHere", result);
 }
