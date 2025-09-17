@@ -1,13 +1,97 @@
-@Test
-void testCompare_EqualBranch() {
-    String mockString = Mockito.mock(String.class);
-    when(mockString.compareTo(any())).thenReturn(0);
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mockito.MockedStatic;
 
-    LoansbbQuotationItemInfo o1 = Mockito.mock(LoansbbQuotationItemInfo.class);
-    LoansbbQuotationItemInfo o2 = Mockito.mock(LoansbbQuotationItemInfo.class);
+import java.util.*;
 
-    when(o1.getFeaturecd()).thenReturn(mockString);
-    when(o2.getFeaturecd()).thenReturn("anything");
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
-    assertEquals(0, sortingCoverage.compare(o1, o2));
+class PropertiesFileReaderTest {
+
+    private Properties props;
+
+    @BeforeEach
+    void setup() {
+        props = new Properties();
+        props.setProperty("R1", "Reason1[EN]English Msg[FR]French Msg");
+        props.setProperty("R2", "Reason2[EN]Only English");
+        props.setProperty("R3", "Reason3[FR]Seulement Français");
+        props.setProperty("R4", "NoFlags");
+    }
+
+    private PropertiesFileReader createReader() {
+        try (MockedStatic<ApiConfig> mockedApi = mockStatic(ApiConfig.class)) {
+            ApiConfig apiConfig = mock(ApiConfig.class);
+            when(ApiConfig.getInstance()).thenReturn(apiConfig);
+            when(apiConfig.getPropertiesConfig("testfile")).thenReturn(props);
+
+            return new PropertiesFileReader("testfile");
+        }
+    }
+
+    @Test
+    void testGetKeyValueItemsAndKeys() {
+        PropertiesFileReader reader = createReader();
+        assertEquals(4, reader.getKeyValueItems().size());
+        assertTrue(reader.getKeys().contains("R1"));
+    }
+
+    @Test
+    void testGetValue() {
+        PropertiesFileReader reader = createReader();
+        assertEquals("Reason1[EN]English Msg[FR]French Msg", reader.getValue("R1"));
+        assertNull(reader.getValue("UNKNOWN"));
+    }
+
+    @Test
+    void testGetKeyValueItem_EnglishVariants() {
+        PropertiesFileReader reader = createReader();
+
+        // value == null
+        assertEquals("X:X", reader.getKeyValueItem("X", ErrorDisplayLanguage.ENGLISH));
+
+        // EN & FR both
+        String res1 = reader.getKeyValueItem("R1", ErrorDisplayLanguage.ENGLISH);
+        assertTrue(res1.contains("English Msg"));
+
+        // Only EN
+        String res2 = reader.getKeyValueItem("R2", ErrorDisplayLanguage.ENGLISH);
+        assertTrue(res2.contains("Only English"));
+
+        // No flags
+        String res3 = reader.getKeyValueItem("R4", ErrorDisplayLanguage.ENGLISH);
+        assertTrue(res3.contains("NoFlags"));
+    }
+
+    @Test
+    void testGetKeyValueItem_FrenchVariants() {
+        PropertiesFileReader reader = createReader();
+
+        // FR present
+        String res1 = reader.getKeyValueItem("R1", ErrorDisplayLanguage.FRENCH);
+        assertTrue(res1.contains("French Msg"));
+
+        // Only FR
+        String res2 = reader.getKeyValueItem("R3", ErrorDisplayLanguage.FRENCH);
+        assertTrue(res2.contains("Seulement Français"));
+
+        // No flags
+        String res3 = reader.getKeyValueItem("R4", ErrorDisplayLanguage.FRENCH);
+        assertTrue(res3.contains("NoFlags"));
+    }
+
+    @Test
+    void testGetKeyItem() {
+        PropertiesFileReader reader = createReader();
+        assertEquals("KEY", reader.getKeyItem("KEY:VALUE"));
+        assertEquals("", reader.getKeyItem("")); // no split parts
+    }
+
+    @Test
+    void testGetValueItem() {
+        PropertiesFileReader reader = createReader();
+        assertEquals("VALUE", reader.getValueItem("KEY:VALUE"));
+        assertEquals("", reader.getValueItem("KEYONLY")); // no value part
+    }
 }
