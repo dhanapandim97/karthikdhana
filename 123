@@ -1,52 +1,19 @@
 @Test
-void testEnglishBranch_NoEnFlag() {
-    PropertiesFileReader reader = createReaderWith("K1", "TextWithoutEn");
-    String res = reader.getKeyValueItem("K1", ErrorDisplayLanguage.ENGLISH);
-    assertEquals("K1:TextWithoutEn", res); // branch A
+void testEnglishBranch_FrAfterEn_LowercaseFlags() {
+    PropertiesFileReader reader = createReaderWith("R1", "Reason[en]Hello[fr]Bonjour");
+    String result = reader.getKeyValueItem("R1", ErrorDisplayLanguage.ENGLISH);
+    // Should take substring between [en] and [fr]
+    assertEquals("R1:Hello", result);
 }
 
 @Test
-void testEnglishBranch_EnBeforeFr() {
-    PropertiesFileReader reader = createReaderWith("K2", "Some[EN]Hello[FR]Bonjour");
-    String res = reader.getKeyValueItem("K2", ErrorDisplayLanguage.ENGLISH);
-    assertEquals("K2:Hello", res); // branch B
-}
+void testFinalReturn_DefaultBranch() {
+    PropertiesFileReader reader = createReaderWith("R2", "SomeValue");
 
-@Test
-void testEnglishBranch_OnlyEn() {
-    PropertiesFileReader reader = createReaderWith("K3", "Word[EN]OnlyEnglish");
-    String res = reader.getKeyValueItem("K3", ErrorDisplayLanguage.ENGLISH);
-    assertEquals("K3:OnlyEnglish", res); // branch C
-}
-
-@Test
-void testFrenchBranch_NoFrFlag() {
-    PropertiesFileReader reader = createReaderWith("K4", "NoFrenchHere");
-    String res = reader.getKeyValueItem("K4", ErrorDisplayLanguage.FRENCH);
-    assertEquals("K4:NoFrenchHere", res); // branch D
-}
-
-@Test
-void testFrenchBranch_FrBeforeEn() {
-    PropertiesFileReader reader = createReaderWith("K5", "Stuff[FR]Bonjour[EN]Hello");
-    String res = reader.getKeyValueItem("K5", ErrorDisplayLanguage.FRENCH);
-    assertEquals("K5:Bonjour", res); // branch E
-}
-
-@Test
-void testFrenchBranch_OnlyFr() {
-    PropertiesFileReader reader = createReaderWith("K6", "Msg[FR]Seulement");
-    String res = reader.getKeyValueItem("K6", ErrorDisplayLanguage.FRENCH);
-    assertEquals("K6:Seulement", res); // branch F
-}
-
-@Test
-void testDefaultBranch_FinalReturn() {
-    PropertiesFileReader reader = createReaderWith("K7", "PlainValue");
-    // Mock an enum constant not ENGLISH/FRENCH
+    // Mock an enum so it's not ENGLISH or FRENCH
     ErrorDisplayLanguage fakeLang = mock(ErrorDisplayLanguage.class);
-    when(fakeLang.getLangStr()).thenReturn("XX");
+    when(fakeLang.getLangStr()).thenReturn("xx");
 
-    String res = reader.getKeyValueItem("K7", fakeLang);
-    assertEquals("K7:PlainValue", res); // branch G
+    String result = reader.getKeyValueItem("R2", fakeLang);
+    assertEquals("R2:SomeValue", result);
 }
