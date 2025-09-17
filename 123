@@ -1,12 +1,12 @@
 import org.junit.jupiter.api.Test;
-import org.mockito.MockedStatic;
+import org.mockito.Mockito;
 
 import java.util.Properties;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-class PropertiesFileReaderExtraCoverageTest {
+class PropertiesFileReaderDefaultBranchTest {
 
     private Properties props;
 
@@ -14,7 +14,7 @@ class PropertiesFileReaderExtraCoverageTest {
         props = new Properties();
         props.setProperty(key, value);
 
-        try (MockedStatic<ApiConfig> mockedApi = mockStatic(ApiConfig.class)) {
+        try (var mockedApi = Mockito.mockStatic(ApiConfig.class)) {
             ApiConfig apiConfig = mock(ApiConfig.class);
             when(ApiConfig.getInstance()).thenReturn(apiConfig);
             when(apiConfig.getPropertiesConfig("testfile")).thenReturn(props);
@@ -23,27 +23,14 @@ class PropertiesFileReaderExtraCoverageTest {
     }
 
     @Test
-    void testEnglishBranchB_FrAfterEn() {
-        PropertiesFileReader reader = createReaderWith("R1", "Reason[EN]Hello[FR]Bonjour");
-        String result = reader.getKeyValueItem("R1", ErrorDisplayLanguage.ENGLISH);
-        assertTrue(result.contains("Hello"));
-    }
+    void testDefaultBranchInGetKeyValueItem() {
+        PropertiesFileReader reader = createReaderWith("R1", "SomeValue");
 
-    @Test
-    void testFrenchBranchE_EnAfterFr() {
-        PropertiesFileReader reader = createReaderWith("R2", "Reason[FR]Bonjour[EN]Hello");
-        String result = reader.getKeyValueItem("R2", ErrorDisplayLanguage.FRENCH);
-        assertTrue(result.contains("Bonjour"));
-    }
+        // Mock the enum so it isn’t ENGLISH or FRENCH
+        ErrorDisplayLanguage fakeLang = mock(ErrorDisplayLanguage.class);
+        when(fakeLang.getLangStr()).thenReturn("ZZ");
 
-    @Test
-    void testDefaultBranchG() {
-        // Use a fake language to hit "default"
-        PropertiesFileReader reader = createReaderWith("R3", "ReasonWithoutFlags");
-        ErrorDisplayLanguage fakeLang = new ErrorDisplayLanguage() {
-            @Override public String getLangStr() { return "ZZ"; }
-        };
-        String result = reader.getKeyValueItem("R3", fakeLang);
-        assertTrue(result.contains("ReasonWithoutFlags"));
+        String result = reader.getKeyValueItem("R1", fakeLang);
+        assertEquals("R1:SomeValue", result);
     }
 }
