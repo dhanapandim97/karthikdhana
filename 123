@@ -6,12 +6,10 @@ import java.util.Properties;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-class PropertiesFileReaderDefaultBranchTest {
-
-    private Properties props;
+class PropertiesFileReaderBranchesTest {
 
     private PropertiesFileReader createReaderWith(String key, String value) {
-        props = new Properties();
+        Properties props = new Properties();
         props.setProperty(key, value);
 
         try (var mockedApi = Mockito.mockStatic(ApiConfig.class)) {
@@ -23,14 +21,22 @@ class PropertiesFileReaderDefaultBranchTest {
     }
 
     @Test
-    void testDefaultBranchInGetKeyValueItem() {
-        PropertiesFileReader reader = createReaderWith("R1", "SomeValue");
+    void testEnglishBranch_FrAfterEn() {
+        // EN flag comes before FR flag → should hit (frFlagIndex >= 0 && frFlagIndex > enFlagIndex)
+        PropertiesFileReader reader = createReaderWith("R1", "Reason[EN]Hello[FR]Bonjour");
+        String result = reader.getKeyValueItem("R1", ErrorDisplayLanguage.ENGLISH);
+        assertTrue(result.contains("Hello"), "Should return English text when FR after EN");
+    }
 
-        // Mock the enum so it isn’t ENGLISH or FRENCH
+    @Test
+    void testFinalReturnPrefixPlusValue_DefaultCase() {
+        // Fake enum to trigger default branch → final return prefix + value
+        PropertiesFileReader reader = createReaderWith("R2", "NoFlagsHere");
+
         ErrorDisplayLanguage fakeLang = mock(ErrorDisplayLanguage.class);
         when(fakeLang.getLangStr()).thenReturn("ZZ");
 
-        String result = reader.getKeyValueItem("R1", fakeLang);
-        assertEquals("R1:SomeValue", result);
+        String result = reader.getKeyValueItem("R2", fakeLang);
+        assertEquals("R2:NoFlagsHere", result, "Should hit final return prefix+value");
     }
 }
