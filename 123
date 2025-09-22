@@ -1,31 +1,84 @@
-@Test
-public void testPopulateQuotationAdditionalStatus_StatusCodeEdges() {
-    AddError mockAddError = mock(AddError.class);
-    when(mockAddError.getAddServerStatusCode()).thenReturn("S1");
-    when(mockAddError.getAddSeverity()).thenReturn("HIGH");
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
-    // Test Integer.MIN_VALUE
-    when(mockAddError.getStatusCode()).thenReturn(Integer.MIN_VALUE);
-    when(mockAddError.getStatusDesc()).thenReturn("desc");
-    ApiErrorHandler handlerMock = mock(ApiErrorHandler.class);
-    when(handlerMock.getAdditionalErrors(anyString())).thenReturn(Arrays.asList(mockAddError));
+import java.util.*;
 
-    try (MockedStatic<ApiErrorHandler> mocked = Mockito.mockStatic(ApiErrorHandler.class)) {
-        mocked.when(ApiErrorHandler::getInstance).thenReturn(handlerMock);
-        try (MockedStatic<ValidatorUtil> validatorMock = Mockito.mockStatic(ValidatorUtil.class)) {
-            validatorMock.when(() -> ValidatorUtil.getParamedMsgText("desc", params)).thenReturn("processedDesc");
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInstance;
+import org.mockito.MockedStatic;
+import org.mockito.Mockito;
 
-            var list = exception.populateQuotationAdditionalstatua("ID");
-            var status = list.get(0);
+import com.td.tdi.cp.api.cpqte.errorhandling.exception.ApiParameterizedErrorException;
+import com.td.tdi.cp.api.cpqte.errorhandling.handler.ApiErrorHandler;
+import com.td.tdi.cp.api.cpqte.errorhandling.util.ValidatorUtil;
+import com.td.tdi.cp.api.cpqte.model.AddError;
 
-            // StatusCode should NOT be set
-            assertEquals(0, status.getStatusCode());
-        }
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
+public class ApiParameterizedErrorExceptionStatusCodeEdgeTest {
+
+    private List<String> params;
+    private ApiParameterizedErrorException exception;
+
+    @BeforeEach
+    public void setUp() {
+        params = Arrays.asList("param1", "param2", "param3");
+        // Use any valid ErrorConfig; content does not matter for this test
+        exception = new ApiParameterizedErrorException(
+                com.td.tdi.cp.api.cpqte.errorhandling.mapper.ErrorConfig.fromValue(
+                        com.td.tdi.cp.api.cpqte.errorhandling.mapper.ErrorIdentifier.APT_DATE_FORMAT_VALIDATION_ERROR.getIdentifier(),
+                        com.td.tdi.cp.api.cpqte.errorhandling.mapper.ErrorDisplayLanguage.ENGLISH.getLangStr()
+                ),
+                params
+        );
     }
 
-    // Test statusCode = 0
-    when(mockAddError.getStatusCode()).thenReturn(0);
-    var list2 = exception.populateQuotationAdditionalstatua("ID");
-    var status2 = list2.get(0);
-    assertEquals(0, status2.getStatusCode());
+    private AddError createMockAddError(Integer statusCode) {
+        AddError mock = mock(AddError.class);
+        when(mock.getAddServerStatusCode()).thenReturn("S1");
+        when(mock.getAddSeverity()).thenReturn("HIGH");
+        when(mock.getStatusCode()).thenReturn(statusCode);
+        when(mock.getStatusDesc()).thenReturn("desc");
+        return mock;
+    }
+
+    @Test
+    public void testStatusCodeMinValueAndZero_AllMethods() {
+        // Test values: Integer.MIN_VALUE and 0 (false branch)
+        List<Integer> edgeValues = Arrays.asList(Integer.MIN_VALUE, 0);
+
+        for (Integer val : edgeValues) {
+            AddError mockAddError = createMockAddError(val);
+
+            ApiErrorHandler handlerMock = mock(ApiErrorHandler.class);
+            when(handlerMock.getAdditionalErrors(anyString())).thenReturn(Arrays.asList(mockAddError));
+
+            try (MockedStatic<ApiErrorHandler> mocked = Mockito.mockStatic(ApiErrorHandler.class)) {
+                mocked.when(ApiErrorHandler::getInstance).thenReturn(handlerMock);
+
+                try (MockedStatic<ValidatorUtil> validatorMock = Mockito.mockStatic(ValidatorUtil.class)) {
+                    validatorMock.when(() -> ValidatorUtil.getParamedMsgText(anyString(), anyList()))
+                                 .thenAnswer(invocation -> {
+                                     String msg = invocation.getArgument(0, String.class);
+                                     return msg == null ? "" : "processed" + msg;
+                                 });
+
+                    // ===== Method 1: QuotationAdditionalstatus =====
+                    var list1 = exception.populateQuotationAdditionalstatua("ID");
+                    assertEquals(1, list1.size());
+                    assertEquals(0, list1.get(0).getStatusCode(), "StatusCode should remain 0 for false branch");
+
+                    // ===== Method 2: CreditProtectionAdditionalstatus =====
+                    var list2 = exception.populateCreditProtectionQuotationAdditionalstatus("ID");
+                    assertEquals(1, list2.size());
+                    assertEquals(0, list2.get(0).getStatusCode(), "StatusCode should remain 0 for false branch");
+
+                    // ===== Method 3: MortgageQuotationAdditionalstatus =====
+                    var list3 = exception.populateMortgageQuotationadditionalstatus("ID");
+                    assertEquals(1, list3.size());
+                    assertEquals(0, list3.get(0).getStatusCode(), "StatusCode should remain 0 for false branch");
+                }
+            }
+        }
+    }
 }
