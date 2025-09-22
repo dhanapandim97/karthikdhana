@@ -1,43 +1,248 @@
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
-import java.lang.reflect.Constructor;
-import java.lang.reflect.Method;
+import java.util.*;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInstance;
+import org.junit.jupiter.api.TestInstance.Lifecycle;
+import org.mockito.MockedStatic;
+import org.mockito.Mockito;
 
-class CpCustOwnershipTypeDAOTest {
+import com.td.tdi.cp.api.cpqte.errorhandling.exception.ApiParameterizedErrorException;
+import com.td.tdi.cp.api.cpqte.errorhandling.exception.ApiException;
+import com.td.tdi.cp.api.cpqte.errorhandling.mapper.ErrorConfig;
+import com.td.tdi.cp.api.cpqte.errorhandling.mapper.ErrorDisplayLanguage;
+import com.td.tdi.cp.api.cpqte.errorhandling.mapper.ErrorIdentifier;
+import com.td.tdi.cp.api.cpqte.model.*;
+import com.td.tdi.cp.api.cpqte.errorhandling.util.ValidatorUtil;
+import com.td.tdi.cp.api.cpqte.errorhandling.handler.ApiErrorHandler;
 
-    private CpCustOwnershipTypeDAO dao;
+@TestInstance(Lifecycle.PER_CLASS)
+public class ApiParameterizedErrorExceptionFullCoverageTest {
+
+    private List<String> params;
+    private ApiParameterizedErrorException exception;
 
     @BeforeEach
-    void setUp() throws Exception {
-        Constructor<CpCustOwnershipTypeDAO> constructor =
-                CpCustOwnershipTypeDAO.class.getDeclaredConstructor();
-        constructor.setAccessible(true);
-        dao = constructor.newInstance();
+    public void setUp() {
+        params = Arrays.asList("param1", "param2", "param3");
+        ErrorConfig error = ErrorConfig.fromValue(
+                ErrorIdentifier.APT_DATE_FORMAT_VALIDATION_ERROR.getIdentifier(),
+                ErrorDisplayLanguage.ENGLISH.getLangStr()
+        );
+        exception = new ApiParameterizedErrorException(error, params);
+    }
+
+    // ===== Normal Flow Tests =====
+    @Test
+    public void testPopulateQuotationAdditionalStatus_Normal() {
+        AddError mockAddError = mock(AddError.class);
+        when(mockAddError.getAddServerStatusCode()).thenReturn("S1");
+        when(mockAddError.getAddSeverity()).thenReturn("HIGH");
+        when(mockAddError.getStatusCode()).thenReturn(100);
+        when(mockAddError.getStatusDesc()).thenReturn("desc");
+
+        ApiErrorHandler handlerMock = mock(ApiErrorHandler.class);
+        when(handlerMock.getAdditionalErrors(anyString())).thenReturn(Arrays.asList(mockAddError));
+
+        try (MockedStatic<ApiErrorHandler> mocked = Mockito.mockStatic(ApiErrorHandler.class)) {
+            mocked.when(ApiErrorHandler::getInstance).thenReturn(handlerMock);
+
+            try (MockedStatic<ValidatorUtil> validatorMock = Mockito.mockStatic(ValidatorUtil.class)) {
+                validatorMock.when(() -> ValidatorUtil.getParamedMsgText("desc", params))
+                             .thenReturn("processedDesc");
+
+                var list = exception.populateQuotationAdditionalstatua("ID");
+                assertEquals(1, list.size());
+                var status = list.get(0);
+                assertEquals("S1", status.getServerStatusCode());
+                assertEquals("processedDesc", status.getStatusDesc());
+                assertEquals(100, status.getStatusCode());
+                assertEquals(AdditionalStatus.SeverityEnum.HIGH, status.getSeverity());
+            }
+        }
     }
 
     @Test
-    void testParseCustomerTypeOwnership_FieldsLength() throws Exception {
-        Method method = CpCustOwnershipTypeDAO.class
-                .getDeclaredMethod("parseCustomerTypeOwnership", String.class);
-        method.setAccessible(true);
+    public void testPopulateCreditProtectionAdditionalStatus_Normal() {
+        AddError mockAddError = mock(AddError.class);
+        when(mockAddError.getAddServerStatusCode()).thenReturn("S2");
+        when(mockAddError.getAddSeverity()).thenReturn("LOW");
+        when(mockAddError.getStatusCode()).thenReturn(200);
+        when(mockAddError.getStatusDesc()).thenReturn("desc2");
 
-        // fields.length == 1  --> covers if(fields.length >0)
-        CPCustomerOwnershipType r1 = (CPCustomerOwnershipType) method.invoke(dao, "MN1");
-        assertThat(r1.getMnemonic()).isEqualTo("MN1");
-        assertThat(r1.getDescription()).isNull();
+        ApiErrorHandler handlerMock = mock(ApiErrorHandler.class);
+        when(handlerMock.getAdditionalErrors(anyString())).thenReturn(Arrays.asList(mockAddError));
 
-        // fields.length == 2 --> covers if(fields.length >1)
-        CPCustomerOwnershipType r2 = (CPCustomerOwnershipType) method.invoke(dao, "MN2\tDesc2");
-        assertThat(r2.getMnemonic()).isEqualTo("MN2");
-        assertThat(r2.getDescription()).isEqualTo("Desc2");
+        try (MockedStatic<ApiErrorHandler> mocked = Mockito.mockStatic(ApiErrorHandler.class)) {
+            mocked.when(ApiErrorHandler::getInstance).thenReturn(handlerMock);
 
-        // fields.length == 3 --> covers if(fields.length >2)
-        CPCustomerOwnershipType r3 = (CPCustomerOwnershipType) method.invoke(dao, "MN3\tDesc3\tFr3");
-        assertThat(r3.getMnemonic()).isEqualTo("MN3");
-        assertThat(r3.getDescription()).isEqualTo("Desc3");
-        assertThat(r3.getFrench()).isEqualTo("Fr3");
+            try (MockedStatic<ValidatorUtil> validatorMock = Mockito.mockStatic(ValidatorUtil.class)) {
+                validatorMock.when(() -> ValidatorUtil.getParamedMsgText("desc2", params))
+                             .thenReturn("processedDesc2");
+
+                var list = exception.populateCreditProtectionQuotationAdditionalstatus("ID");
+                assertEquals(1, list.size());
+                var status = list.get(0);
+                assertEquals("S2", status.getServerStatusCode());
+                assertEquals("processedDesc2", status.getStatusDesc());
+                assertEquals(200, status.getStatusCode());
+                assertEquals(AddCreditProtectionQuotationWarningRsStatusAdditionalStatus.SeverityEnum.LOW, status.getSeverity());
+            }
+        }
+    }
+
+    @Test
+    public void testPopulateMortgageQuotationAdditionalStatus_Normal() {
+        AddError mockAddError = mock(AddError.class);
+        when(mockAddError.getAddServerStatusCode()).thenReturn("S3");
+        when(mockAddError.getAddSeverity()).thenReturn("MEDIUM");
+        when(mockAddError.getStatusCode()).thenReturn(300);
+        when(mockAddError.getStatusDesc()).thenReturn("desc3");
+
+        ApiErrorHandler handlerMock = mock(ApiErrorHandler.class);
+        when(handlerMock.getAdditionalErrors(anyString())).thenReturn(Arrays.asList(mockAddError));
+
+        try (MockedStatic<ApiErrorHandler> mocked = Mockito.mockStatic(ApiErrorHandler.class)) {
+            mocked.when(ApiErrorHandler::getInstance).thenReturn(handlerMock);
+
+            try (MockedStatic<ValidatorUtil> validatorMock = Mockito.mockStatic(ValidatorUtil.class)) {
+                validatorMock.when(() -> ValidatorUtil.getParamedMsgText("desc3", params))
+                             .thenReturn("processedDesc3");
+
+                var list = exception.populateMortgageQuotationadditionalstatus("ID");
+                assertEquals(1, list.size());
+                var status = list.get(0);
+                assertEquals("S3", status.getServerStatusCode());
+                assertEquals("processedDesc3", status.getStatusDesc());
+                assertEquals(300, status.getStatusCode());
+                assertEquals(AddCreditProtectionQuotationMortgageProductWarningRsStatusAdditionalStatusInner.SeverityEnum.MEDIUM, status.getSeverity());
+            }
+        }
+    }
+
+    @Test
+    public void testExceptionToStatusResponses() {
+        try {
+            throw new ApiParameterizedErrorException(
+                    ErrorConfig.fromValue(ErrorIdentifier.APT_DATE_FORMAT_VALIDATION_ERROR.getIdentifier(), ErrorDisplayLanguage.ENGLISH.getLangStr()),
+                    params
+            );
+        } catch (ApiException ex) {
+            // toStatusResponse
+            Status status = ex.toStatusResponse();
+            assertNotNull(status.getServerStatusCode());
+            assertNotNull(status.getAdditionalStatus());
+
+            // toWarningStatusResponse
+            AddCreditProtectionQuotationWarningRsStatus warning = ex.toWarningStatusResponse();
+            assertNotNull(warning.getServerStatusCode());
+
+            // toMortgageWarningStatusResponse
+            AddCreditProtectionQuotationMortgageProductWarningRsStatus mtgWarning = ex.toMortgageWarningStatusResponse();
+            assertNotNull(mtgWarning.getServerStatusCode());
+
+            // toWarningStatusV2Response
+            Status statusV2 = ex.toWarningStatusV2Response();
+            assertNotNull(statusV2.getServerStatusCode());
+        }
+    }
+
+    // ===== Branch/Edge Case Tests =====
+    @Test
+    public void testPopulateQuotationAdditionalStatus_Branches() {
+        AddError mockAddError = mock(AddError.class);
+        when(mockAddError.getAddServerStatusCode()).thenReturn("");
+        when(mockAddError.getAddSeverity()).thenReturn(null);
+        when(mockAddError.getStatusCode()).thenReturn(Integer.MIN_VALUE);
+        when(mockAddError.getStatusDesc()).thenReturn(null);
+
+        ApiErrorHandler handlerMock = mock(ApiErrorHandler.class);
+        when(handlerMock.getAdditionalErrors(anyString())).thenReturn(Arrays.asList(mockAddError));
+
+        try (MockedStatic<ApiErrorHandler> mocked = Mockito.mockStatic(ApiErrorHandler.class)) {
+            mocked.when(ApiErrorHandler::getInstance).thenReturn(handlerMock);
+
+            try (MockedStatic<ValidatorUtil> validatorMock = Mockito.mockStatic(ValidatorUtil.class)) {
+                validatorMock.when(() -> ValidatorUtil.getParamedMsgText(null, params)).thenReturn(null);
+
+                var list = exception.populateQuotationAdditionalstatua("ID");
+                var status = list.get(0);
+                assertNull(status.getServerStatusCode());
+                assertNull(status.getSeverity());
+                assertEquals(0, status.getStatusCode());
+                assertNull(status.getStatusDesc());
+            }
+        }
+    }
+
+    @Test
+    public void testPopulateCreditProtectionAdditionalStatus_Branches() {
+        AddError mockAddError = mock(AddError.class);
+        when(mockAddError.getAddServerStatusCode()).thenReturn(null);
+        when(mockAddError.getAddSeverity()).thenReturn("");
+        when(mockAddError.getStatusCode()).thenReturn(0);
+        when(mockAddError.getStatusDesc()).thenReturn("");
+
+        ApiErrorHandler handlerMock = mock(ApiErrorHandler.class);
+        when(handlerMock.getAdditionalErrors(anyString())).thenReturn(Arrays.asList(mockAddError));
+
+        try (MockedStatic<ApiErrorHandler> mocked = Mockito.mockStatic(ApiErrorHandler.class)) {
+            mocked.when(ApiErrorHandler::getInstance).thenReturn(handlerMock);
+
+            try (MockedStatic<ValidatorUtil> validatorMock = Mockito.mockStatic(ValidatorUtil.class)) {
+                validatorMock.when(() -> ValidatorUtil.getParamedMsgText("", params)).thenReturn("");
+
+                var list = exception.populateCreditProtectionQuotationAdditionalstatus("ID");
+                var status = list.get(0);
+                assertNull(status.getServerStatusCode());
+                assertNull(status.getSeverity());
+                assertEquals(0, status.getStatusCode());
+                assertEquals("", status.getStatusDesc());
+            }
+        }
+    }
+
+    @Test
+    public void testPopulateMortgageQuotationAdditionalStatus_Branches() {
+        AddError mockAddError = mock(AddError.class);
+        when(mockAddError.getAddServerStatusCode()).thenReturn("");
+        when(mockAddError.getAddSeverity()).thenReturn(null);
+        when(mockAddError.getStatusCode()).thenReturn(Integer.MIN_VALUE);
+        when(mockAddError.getStatusDesc()).thenReturn(null);
+
+        ApiErrorHandler handlerMock = mock(ApiErrorHandler.class);
+        when(handlerMock.getAdditionalErrors(anyString())).thenReturn(Arrays.asList(mockAddError));
+
+        try (MockedStatic<ApiErrorHandler> mocked = Mockito.mockStatic(ApiErrorHandler.class)) {
+            mocked.when(ApiErrorHandler::getInstance).thenReturn(handlerMock);
+
+            try (MockedStatic<ValidatorUtil> validatorMock = Mockito.mockStatic(ValidatorUtil.class)) {
+                validatorMock.when(() -> ValidatorUtil.getParamedMsgText(null, params)).thenReturn(null);
+
+                var list = exception.populateMortgageQuotationadditionalstatus("ID");
+                var status = list.get(0);
+                assertNull(status.getServerStatusCode());
+                assertNull(status.getSeverity());
+                assertEquals(0, status.getStatusCode());
+                assertNull(status.getStatusDesc());
+            }
+        }
+    }
+
+    @Test
+    public void testPopulateMethods_EmptyAddErrorsList() {
+        ApiErrorHandler handlerMock = mock(ApiErrorHandler.class);
+        when(handlerMock.getAdditionalErrors(anyString())).thenReturn(Collections.emptyList());
+
+        try (MockedStatic<ApiErrorHandler> mocked = Mockito.mockStatic(ApiErrorHandler.class)) {
+            mocked.when(ApiErrorHandler::getInstance).thenReturn(handlerMock);
+
+            assertTrue(exception.populateQuotationAdditionalstatua("ID").isEmpty());
+            assertTrue(exception.populateCreditProtectionQuotationAdditionalstatus("ID").isEmpty());
+            assertTrue(exception.populateMortgageQuotationadditionalstatus("ID").isEmpty());
+        }
     }
 }
