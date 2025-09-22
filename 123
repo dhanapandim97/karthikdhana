@@ -1,22 +1,33 @@
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.spy;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.Mockito.*;
 
+import java.io.ByteArrayInputStream;
+import java.io.InputStream;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class CpCustOwnershipTypeDAOTest {
 
-    private static final Logger logger = LoggerFactory.getLogger(CpCustOwnershipTypeDAOTest.class);
-
     protected CpCustOwnershipTypeDAO cpCustOwnershipTypeDAO;
+
+    // CSV content with full fields
+    private static final String CSV_CONTENT_FULL =
+            "MN1\tDesc1\tFr1\tYes\tNo\n" +
+            "MN2\tDesc2\tFr2\tNo\tYes\n";
+
+    // CSV content with short fields for edge case
+    private static final String CSV_CONTENT_SHORT =
+            "MN1\n" + // 1 field
+            "MN2\tDesc2\n"; // 2 fields
 
     @BeforeEach
     void setUpTestData() throws Exception {
@@ -24,57 +35,124 @@ class CpCustOwnershipTypeDAOTest {
         Constructor<CpCustOwnershipTypeDAO> constructor =
                 CpCustOwnershipTypeDAO.class.getDeclaredConstructor();
         constructor.setAccessible(true);
-        cpCustOwnershipTypeDAO = constructor.newInstance();
+
+        cpCustOwnershipTypeDAO = new CpCustOwnershipTypeDAO() {
+            @Override
+            protected InputStream getClassResourceAsStream(String fileName) {
+                // Return full CSV for normal tests
+                return new ByteArrayInputStream(CSV_CONTENT_FULL.getBytes(StandardCharsets.UTF_16LE));
+            }
+        };
     }
 
+    // ------------------------
+    // Test public getter
+    // ------------------------
     @Test
     void verifyCpCustOwnershipTypeList() {
-        logger.info("Executing verifyCpCustOwnershipTypeList()");
         List<CPCustomerOwnershipType> list = cpCustOwnershipTypeDAO.getCPCustomerOwnershipTypeList();
-
-        // Ensure list is initialized
         assertThat(list).isNotNull();
-        assertThat(list.size()).isGreaterThan(0);
+        assertThat(list.size()).isEqualTo(2);
+
+        // Verify first record
+        assertThat(list.get(0).getMnemonic()).isEqualTo("MN1");
+        assertThat(list.get(0).getDescription()).isEqualTo("Desc1");
     }
 
-    @Test
-    void verifySetCpCustomerOwnershipTypeList() throws Exception {
-        // Spy the DAO to call private method
-        CpCustOwnershipTypeDAO spyDao = spy(cpCustOwnershipTypeDAO);
-
-        // Access private method
-        Method method = CpCustOwnershipTypeDAO.class
-                .getDeclaredMethod("setCpCustomerOwnershipTypeList");
-        method.setAccessible(true);
-
-        // Invoke private method
-        method.invoke(spyDao);
-
-        // Verify list is populated
-        List<CPCustomerOwnershipType> list = spyDao.getCPCustomerOwnershipTypeList();
-        assertThat(list).isNotNull();
-        assertThat(list.size()).isGreaterThan(0);
-    }
-
+    // ------------------------
+    // Test parseCustomerTypeOwnership private method
+    // ------------------------
     @Test
     void verifyParseCustomerTypeOwnership() throws Exception {
-        // Access private method
         Method method = CpCustOwnershipTypeDAO.class
                 .getDeclaredMethod("parseCustomerTypeOwnership", String.class);
         method.setAccessible(true);
 
-        // Test with empty string
-        CPCustomerOwnershipType emptyResult = (CPCustomerOwnershipType) method.invoke(cpCustOwnershipTypeDAO, "");
-        assertThat(emptyResult).isNotNull();
+        // Empty string
+        CPCustomerOwnershipType emptyResult =
+                (CPCustomerOwnershipType) method.invoke(cpCustOwnershipTypeDAO, "");
         assertThat(emptyResult.getMnemonic()).isNull();
 
-        // Test with valid CSV line
+        // Full line
         String line = "MN1\tDesc1\tFr1\tYes\tNo";
-        CPCustomerOwnershipType result = (CPCustomerOwnershipType) method.invoke(cpCustOwnershipTypeDAO, line);
+        CPCustomerOwnershipType result =
+                (CPCustomerOwnershipType) method.invoke(cpCustOwnershipTypeDAO, line);
         assertThat(result.getMnemonic()).isEqualTo("MN1");
         assertThat(result.getDescription()).isEqualTo("Desc1");
         assertThat(result.getFrench()).isEqualTo("Fr1");
         assertThat(result.getMtgEligible()).isEqualTo("Yes");
         assertThat(result.getLocEligible()).isEqualTo("No");
+    }
+
+    // ------------------------
+    // Test null CSV InputStream branch
+    // ------------------------
+    @Test
+    void testSetCpCustomerOwnershipTypeList_NullStream() throws Exception {
+        CpCustOwnershipTypeDAO dao = new CpCustOwnershipTypeDAO() {
+            @Override
+            protected InputStream getClassResourceAsStream(String fileName) {
+                return null; // Simulate null stream
+            }
+        };
+
+        Method method = CpCustOwnershipTypeDAO.class
+                .getDeclaredMethod("setCpCustomerOwnershipTypeList");
+        method.setAccessible(true);
+
+        assertDoesNotThrow(() -> method.invoke(dao));
+
+        // List should remain null
+        assertThat(dao.getCPCustomerOwnershipTypeList()).isNull();
+    }
+
+    // ------------------------
+    // Test fields.length branches (>0, >1, >2...)
+    // ------------------------
+    @Test
+    void testParseCustomerTypeOwnership_ShortFields() throws Exception {
+        CpCustOwnershipTypeDAO dao = new CpCustOwnershipTypeDAO() {
+            @Override
+            protected InputStream getClassResourceAsStream(String fileName) {
+                return new ByteArrayInputStream(CSV_CONTENT_SHORT.getBytes(StandardCharsets.UTF_16LE));
+            }
+        };
+
+        Method method = CpCustOwnershipTypeDAO.class
+                .getDeclaredMethod("setCpCustomerOwnershipTypeList");
+        method.setAccessible(true);
+
+        assertDoesNotThrow(() -> method.invoke(dao));
+
+        List<CPCustomerOwnershipType> list = dao.getCPCustomerOwnershipTypeList();
+        assertThat(list).isNotNull();
+        assertThat(list.size()).isEqualTo(2);
+
+        // First entry has 1 field
+        assertThat(list.get(0).getMnemonic()).isEqualTo("MN1");
+        assertThat(list.get(0).getDescription()).isNull();
+
+        // Second entry has 2 fields
+        assertThat(list.get(1).getMnemonic()).isEqualTo("MN2");
+        assertThat(list.get(1).getDescription()).isEqualTo("Desc2");
+    }
+
+    // ------------------------
+    // Test catch block by forcing exception
+    // ------------------------
+    @Test
+    void testSetCpCustomerOwnershipTypeList_Exception() throws Exception {
+        CpCustOwnershipTypeDAO spyDao = spy(cpCustOwnershipTypeDAO);
+
+        // Use reflection to access private method
+        Method method = CpCustOwnershipTypeDAO.class
+                .getDeclaredMethod("setCpCustomerOwnershipTypeList");
+        method.setAccessible(true);
+
+        // Mock parseFile to throw exception
+        doThrow(new RuntimeException("Test Exception"))
+                .when(spyDao, "parseFile", any(InputStream.class));
+
+        assertThrows(Exception.class, () -> method.invoke(spyDao));
     }
 }
