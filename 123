@@ -1,14 +1,14 @@
 @Test
-public void testMortgagePopulateStatusCodeBranches() {
-    // True branch: statusCode > 0
-    AddError mockAddErrorTrue = mock(AddError.class);
-    when(mockAddErrorTrue.getAddServerStatusCode()).thenReturn("S3");
-    when(mockAddErrorTrue.getAddSeverity()).thenReturn("HIGH");
-    when(mockAddErrorTrue.getStatusCode()).thenReturn(123); // >0
-    when(mockAddErrorTrue.getStatusDesc()).thenReturn("desc");
+public void testMortgagePopulateStatusCodeBranches_CoverLine() {
+    // True branch: statusCode = 123
+    AddError addErrorTrue = mock(AddError.class);
+    when(addErrorTrue.getAddServerStatusCode()).thenReturn("S3");
+    when(addErrorTrue.getAddSeverity()).thenReturn("HIGH");
+    when(addErrorTrue.getStatusCode()).thenReturn(123); // >0 && != MIN_VALUE
+    when(addErrorTrue.getStatusDesc()).thenReturn("desc");
 
     ApiErrorHandler handlerMock = mock(ApiErrorHandler.class);
-    when(handlerMock.getAdditionalErrors(anyString())).thenReturn(Arrays.asList(mockAddErrorTrue));
+    when(handlerMock.getAdditionalErrors(anyString())).thenReturn(Arrays.asList(addErrorTrue));
 
     try (MockedStatic<ApiErrorHandler> mocked = Mockito.mockStatic(ApiErrorHandler.class)) {
         mocked.when(ApiErrorHandler::getInstance).thenReturn(handlerMock);
@@ -17,22 +17,21 @@ public void testMortgagePopulateStatusCodeBranches() {
             validatorMock.when(() -> ValidatorUtil.getParamedMsgText(anyString(), anyList()))
                          .thenReturn("processedDesc");
 
+            // Execute method
             var list = exception.populateMortgageQuotationadditionalstatus("ID");
             var status = list.get(0);
-
-            // True branch executed
-            assertEquals(123, status.getStatusCode());
+            assertEquals(123, status.getStatusCode(), "True branch: statusCode should be set");
         }
     }
 
     // False branch: statusCode = 0
-    AddError mockAddErrorFalse = mock(AddError.class);
-    when(mockAddErrorFalse.getAddServerStatusCode()).thenReturn("S3");
-    when(mockAddErrorFalse.getAddSeverity()).thenReturn("HIGH");
-    when(mockAddErrorFalse.getStatusCode()).thenReturn(0);
-    when(mockAddErrorFalse.getStatusDesc()).thenReturn("desc");
+    AddError addErrorFalse = mock(AddError.class);
+    when(addErrorFalse.getAddServerStatusCode()).thenReturn("S3");
+    when(addErrorFalse.getAddSeverity()).thenReturn("HIGH");
+    when(addErrorFalse.getStatusCode()).thenReturn(0); // triggers false branch
+    when(addErrorFalse.getStatusDesc()).thenReturn("desc");
 
-    when(handlerMock.getAdditionalErrors(anyString())).thenReturn(Arrays.asList(mockAddErrorFalse));
+    when(handlerMock.getAdditionalErrors(anyString())).thenReturn(Arrays.asList(addErrorFalse));
 
     try (MockedStatic<ApiErrorHandler> mocked = Mockito.mockStatic(ApiErrorHandler.class)) {
         mocked.when(ApiErrorHandler::getInstance).thenReturn(handlerMock);
@@ -43,9 +42,7 @@ public void testMortgagePopulateStatusCodeBranches() {
 
             var list = exception.populateMortgageQuotationadditionalstatus("ID");
             var status = list.get(0);
-
-            // False branch executed
-            assertEquals(0, status.getStatusCode());
+            assertEquals(0, status.getStatusCode(), "False branch: statusCode should remain 0");
         }
     }
 }
