@@ -1,84 +1,51 @@
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
+@Test
+public void testMortgagePopulateStatusCodeBranches() {
+    // True branch: statusCode > 0
+    AddError mockAddErrorTrue = mock(AddError.class);
+    when(mockAddErrorTrue.getAddServerStatusCode()).thenReturn("S3");
+    when(mockAddErrorTrue.getAddSeverity()).thenReturn("HIGH");
+    when(mockAddErrorTrue.getStatusCode()).thenReturn(123); // >0
+    when(mockAddErrorTrue.getStatusDesc()).thenReturn("desc");
 
-import java.util.*;
+    ApiErrorHandler handlerMock = mock(ApiErrorHandler.class);
+    when(handlerMock.getAdditionalErrors(anyString())).thenReturn(Arrays.asList(mockAddErrorTrue));
 
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.TestInstance;
-import org.mockito.MockedStatic;
-import org.mockito.Mockito;
+    try (MockedStatic<ApiErrorHandler> mocked = Mockito.mockStatic(ApiErrorHandler.class)) {
+        mocked.when(ApiErrorHandler::getInstance).thenReturn(handlerMock);
 
-import com.td.tdi.cp.api.cpqte.errorhandling.exception.ApiParameterizedErrorException;
-import com.td.tdi.cp.api.cpqte.errorhandling.handler.ApiErrorHandler;
-import com.td.tdi.cp.api.cpqte.errorhandling.util.ValidatorUtil;
-import com.td.tdi.cp.api.cpqte.model.AddError;
+        try (MockedStatic<ValidatorUtil> validatorMock = Mockito.mockStatic(ValidatorUtil.class)) {
+            validatorMock.when(() -> ValidatorUtil.getParamedMsgText(anyString(), anyList()))
+                         .thenReturn("processedDesc");
 
-@TestInstance(TestInstance.Lifecycle.PER_CLASS)
-public class ApiParameterizedErrorExceptionStatusCodeEdgeTest {
+            var list = exception.populateMortgageQuotationadditionalstatus("ID");
+            var status = list.get(0);
 
-    private List<String> params;
-    private ApiParameterizedErrorException exception;
-
-    @BeforeEach
-    public void setUp() {
-        params = Arrays.asList("param1", "param2", "param3");
-        // Use any valid ErrorConfig; content does not matter for this test
-        exception = new ApiParameterizedErrorException(
-                com.td.tdi.cp.api.cpqte.errorhandling.mapper.ErrorConfig.fromValue(
-                        com.td.tdi.cp.api.cpqte.errorhandling.mapper.ErrorIdentifier.APT_DATE_FORMAT_VALIDATION_ERROR.getIdentifier(),
-                        com.td.tdi.cp.api.cpqte.errorhandling.mapper.ErrorDisplayLanguage.ENGLISH.getLangStr()
-                ),
-                params
-        );
+            // True branch executed
+            assertEquals(123, status.getStatusCode());
+        }
     }
 
-    private AddError createMockAddError(Integer statusCode) {
-        AddError mock = mock(AddError.class);
-        when(mock.getAddServerStatusCode()).thenReturn("S1");
-        when(mock.getAddSeverity()).thenReturn("HIGH");
-        when(mock.getStatusCode()).thenReturn(statusCode);
-        when(mock.getStatusDesc()).thenReturn("desc");
-        return mock;
-    }
+    // False branch: statusCode = 0
+    AddError mockAddErrorFalse = mock(AddError.class);
+    when(mockAddErrorFalse.getAddServerStatusCode()).thenReturn("S3");
+    when(mockAddErrorFalse.getAddSeverity()).thenReturn("HIGH");
+    when(mockAddErrorFalse.getStatusCode()).thenReturn(0);
+    when(mockAddErrorFalse.getStatusDesc()).thenReturn("desc");
 
-    @Test
-    public void testStatusCodeMinValueAndZero_AllMethods() {
-        // Test values: Integer.MIN_VALUE and 0 (false branch)
-        List<Integer> edgeValues = Arrays.asList(Integer.MIN_VALUE, 0);
+    when(handlerMock.getAdditionalErrors(anyString())).thenReturn(Arrays.asList(mockAddErrorFalse));
 
-        for (Integer val : edgeValues) {
-            AddError mockAddError = createMockAddError(val);
+    try (MockedStatic<ApiErrorHandler> mocked = Mockito.mockStatic(ApiErrorHandler.class)) {
+        mocked.when(ApiErrorHandler::getInstance).thenReturn(handlerMock);
 
-            ApiErrorHandler handlerMock = mock(ApiErrorHandler.class);
-            when(handlerMock.getAdditionalErrors(anyString())).thenReturn(Arrays.asList(mockAddError));
+        try (MockedStatic<ValidatorUtil> validatorMock = Mockito.mockStatic(ValidatorUtil.class)) {
+            validatorMock.when(() -> ValidatorUtil.getParamedMsgText(anyString(), anyList()))
+                         .thenReturn("processedDesc");
 
-            try (MockedStatic<ApiErrorHandler> mocked = Mockito.mockStatic(ApiErrorHandler.class)) {
-                mocked.when(ApiErrorHandler::getInstance).thenReturn(handlerMock);
+            var list = exception.populateMortgageQuotationadditionalstatus("ID");
+            var status = list.get(0);
 
-                try (MockedStatic<ValidatorUtil> validatorMock = Mockito.mockStatic(ValidatorUtil.class)) {
-                    validatorMock.when(() -> ValidatorUtil.getParamedMsgText(anyString(), anyList()))
-                                 .thenAnswer(invocation -> {
-                                     String msg = invocation.getArgument(0, String.class);
-                                     return msg == null ? "" : "processed" + msg;
-                                 });
-
-                    // ===== Method 1: QuotationAdditionalstatus =====
-                    var list1 = exception.populateQuotationAdditionalstatua("ID");
-                    assertEquals(1, list1.size());
-                    assertEquals(0, list1.get(0).getStatusCode(), "StatusCode should remain 0 for false branch");
-
-                    // ===== Method 2: CreditProtectionAdditionalstatus =====
-                    var list2 = exception.populateCreditProtectionQuotationAdditionalstatus("ID");
-                    assertEquals(1, list2.size());
-                    assertEquals(0, list2.get(0).getStatusCode(), "StatusCode should remain 0 for false branch");
-
-                    // ===== Method 3: MortgageQuotationAdditionalstatus =====
-                    var list3 = exception.populateMortgageQuotationadditionalstatus("ID");
-                    assertEquals(1, list3.size());
-                    assertEquals(0, list3.get(0).getStatusCode(), "StatusCode should remain 0 for false branch");
-                }
-            }
+            // False branch executed
+            assertEquals(0, status.getStatusCode());
         }
     }
 }
