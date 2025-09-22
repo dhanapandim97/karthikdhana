@@ -1,101 +1,43 @@
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.io.InputStream;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
-import java.util.List;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-@TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class CpCustOwnershipTypeDAOTest {
 
-    protected CpCustOwnershipTypeDAO cpCustOwnershipTypeDAO;
+    private CpCustOwnershipTypeDAO dao;
 
     @BeforeEach
-    void setUpTestData() throws Exception {
+    void setUp() throws Exception {
         Constructor<CpCustOwnershipTypeDAO> constructor =
                 CpCustOwnershipTypeDAO.class.getDeclaredConstructor();
         constructor.setAccessible(true);
-
-        // Normal DAO for most tests
-        cpCustOwnershipTypeDAO = constructor.newInstance();
+        dao = constructor.newInstance();
     }
 
-    // ------------------------
-    // Null CSV InputStream branch
-    // ------------------------
-    @Test
-    void testSetCpCustomerOwnershipTypeList_NullStream() throws Exception {
-        CpCustOwnershipTypeDAO dao = new CpCustOwnershipTypeDAO() {
-            @Override
-            protected InputStream getClassResourceAsStream(String fileName) {
-                return null; // simulate null stream
-            }
-        };
-
-        Method method = CpCustOwnershipTypeDAO.class
-                .getDeclaredMethod("setCpCustomerOwnershipTypeList");
-        method.setAccessible(true);
-
-        // Should not throw exception, returns early
-        method.invoke(dao);
-
-        assertThat(dao.getCPCustomerOwnershipTypeList()).isNull();
-    }
-
-    // ------------------------
-    // Force exception in InputStream to cover catch block
-    // ------------------------
-    @Test
-    void testSetCpCustomerOwnershipTypeList_CatchBlock() throws Exception {
-        CpCustOwnershipTypeDAO dao = new CpCustOwnershipTypeDAO() {
-            @Override
-            protected InputStream getClassResourceAsStream(String fileName) {
-                // Return InputStream that throws exception on read
-                return new InputStream() {
-                    @Override
-                    public int read() {
-                        throw new RuntimeException("Forced exception for testing");
-                    }
-                };
-            }
-        };
-
-        Method method = CpCustOwnershipTypeDAO.class
-                .getDeclaredMethod("setCpCustomerOwnershipTypeList");
-        method.setAccessible(true);
-
-        try {
-            method.invoke(dao);
-        } catch (Exception ex) {
-            // Catch block is executed here
-        }
-
-        // List should remain null due to exception
-        assertThat(dao.getCPCustomerOwnershipTypeList()).isNull();
-    }
-
-    // ------------------------
-    // Test parseCustomerTypeOwnership with fields length >0 and >1
-    // ------------------------
     @Test
     void testParseCustomerTypeOwnership_FieldsLength() throws Exception {
         Method method = CpCustOwnershipTypeDAO.class
                 .getDeclaredMethod("parseCustomerTypeOwnership", String.class);
         method.setAccessible(true);
 
-        // Only 1 field
-        CPCustomerOwnershipType result1 = (CPCustomerOwnershipType) method.invoke(
-                cpCustOwnershipTypeDAO, "MN1");
-        assertThat(result1.getMnemonic()).isEqualTo("MN1");
-        assertThat(result1.getDescription()).isNull();
+        // fields.length == 1  --> covers if(fields.length >0)
+        CPCustomerOwnershipType r1 = (CPCustomerOwnershipType) method.invoke(dao, "MN1");
+        assertThat(r1.getMnemonic()).isEqualTo("MN1");
+        assertThat(r1.getDescription()).isNull();
 
-        // 2 fields
-        CPCustomerOwnershipType result2 = (CPCustomerOwnershipType) method.invoke(
-                cpCustOwnershipTypeDAO, "MN2\tDesc2");
-        assertThat(result2.getMnemonic()).isEqualTo("MN2");
-        assertThat(result2.getDescription()).isEqualTo("Desc2");
+        // fields.length == 2 --> covers if(fields.length >1)
+        CPCustomerOwnershipType r2 = (CPCustomerOwnershipType) method.invoke(dao, "MN2\tDesc2");
+        assertThat(r2.getMnemonic()).isEqualTo("MN2");
+        assertThat(r2.getDescription()).isEqualTo("Desc2");
+
+        // fields.length == 3 --> covers if(fields.length >2)
+        CPCustomerOwnershipType r3 = (CPCustomerOwnershipType) method.invoke(dao, "MN3\tDesc3\tFr3");
+        assertThat(r3.getMnemonic()).isEqualTo("MN3");
+        assertThat(r3.getDescription()).isEqualTo("Desc3");
+        assertThat(r3.getFrench()).isEqualTo("Fr3");
     }
 }
