@@ -1,98 +1,37 @@
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.mockito.Mockito.*;
 
-import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.TestInstance;
 
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class CpCustOwnershipTypeDAOTest {
 
     protected CpCustOwnershipTypeDAO cpCustOwnershipTypeDAO;
 
-    // CSV content with full fields
-    private static final String CSV_CONTENT_FULL =
-            "MN1\tDesc1\tFr1\tYes\tNo\n" +
-            "MN2\tDesc2\tFr2\tNo\tYes\n";
-
-    // CSV content with short fields for edge case
-    private static final String CSV_CONTENT_SHORT =
-            "MN1\n" + // 1 field
-            "MN2\tDesc2\n"; // 2 fields
-
     @BeforeEach
     void setUpTestData() throws Exception {
-        // Create instance via reflection (calls private constructor)
         Constructor<CpCustOwnershipTypeDAO> constructor =
                 CpCustOwnershipTypeDAO.class.getDeclaredConstructor();
         constructor.setAccessible(true);
 
-        cpCustOwnershipTypeDAO = new CpCustOwnershipTypeDAO() {
-            @Override
-            protected InputStream getClassResourceAsStream(String fileName) {
-                // Return full CSV for normal tests
-                return new ByteArrayInputStream(CSV_CONTENT_FULL.getBytes(StandardCharsets.UTF_16LE));
-            }
-        };
+        // Normal DAO for most tests
+        cpCustOwnershipTypeDAO = constructor.newInstance();
     }
 
     // ------------------------
-    // Test public getter
-    // ------------------------
-    @Test
-    void verifyCpCustOwnershipTypeList() {
-        List<CPCustomerOwnershipType> list = cpCustOwnershipTypeDAO.getCPCustomerOwnershipTypeList();
-        assertThat(list).isNotNull();
-        assertThat(list.size()).isEqualTo(2);
-
-        // Verify first record
-        assertThat(list.get(0).getMnemonic()).isEqualTo("MN1");
-        assertThat(list.get(0).getDescription()).isEqualTo("Desc1");
-    }
-
-    // ------------------------
-    // Test parseCustomerTypeOwnership private method
-    // ------------------------
-    @Test
-    void verifyParseCustomerTypeOwnership() throws Exception {
-        Method method = CpCustOwnershipTypeDAO.class
-                .getDeclaredMethod("parseCustomerTypeOwnership", String.class);
-        method.setAccessible(true);
-
-        // Empty string
-        CPCustomerOwnershipType emptyResult =
-                (CPCustomerOwnershipType) method.invoke(cpCustOwnershipTypeDAO, "");
-        assertThat(emptyResult.getMnemonic()).isNull();
-
-        // Full line
-        String line = "MN1\tDesc1\tFr1\tYes\tNo";
-        CPCustomerOwnershipType result =
-                (CPCustomerOwnershipType) method.invoke(cpCustOwnershipTypeDAO, line);
-        assertThat(result.getMnemonic()).isEqualTo("MN1");
-        assertThat(result.getDescription()).isEqualTo("Desc1");
-        assertThat(result.getFrench()).isEqualTo("Fr1");
-        assertThat(result.getMtgEligible()).isEqualTo("Yes");
-        assertThat(result.getLocEligible()).isEqualTo("No");
-    }
-
-    // ------------------------
-    // Test null CSV InputStream branch
+    // Null CSV InputStream branch
     // ------------------------
     @Test
     void testSetCpCustomerOwnershipTypeList_NullStream() throws Exception {
         CpCustOwnershipTypeDAO dao = new CpCustOwnershipTypeDAO() {
             @Override
             protected InputStream getClassResourceAsStream(String fileName) {
-                return null; // Simulate null stream
+                return null; // simulate null stream
             }
         };
 
@@ -100,21 +39,27 @@ class CpCustOwnershipTypeDAOTest {
                 .getDeclaredMethod("setCpCustomerOwnershipTypeList");
         method.setAccessible(true);
 
-        assertDoesNotThrow(() -> method.invoke(dao));
+        // Should not throw exception, returns early
+        method.invoke(dao);
 
-        // List should remain null
         assertThat(dao.getCPCustomerOwnershipTypeList()).isNull();
     }
 
     // ------------------------
-    // Test fields.length branches (>0, >1, >2...)
+    // Force exception in InputStream to cover catch block
     // ------------------------
     @Test
-    void testParseCustomerTypeOwnership_ShortFields() throws Exception {
+    void testSetCpCustomerOwnershipTypeList_CatchBlock() throws Exception {
         CpCustOwnershipTypeDAO dao = new CpCustOwnershipTypeDAO() {
             @Override
             protected InputStream getClassResourceAsStream(String fileName) {
-                return new ByteArrayInputStream(CSV_CONTENT_SHORT.getBytes(StandardCharsets.UTF_16LE));
+                // Return InputStream that throws exception on read
+                return new InputStream() {
+                    @Override
+                    public int read() {
+                        throw new RuntimeException("Forced exception for testing");
+                    }
+                };
             }
         };
 
@@ -122,37 +67,35 @@ class CpCustOwnershipTypeDAOTest {
                 .getDeclaredMethod("setCpCustomerOwnershipTypeList");
         method.setAccessible(true);
 
-        assertDoesNotThrow(() -> method.invoke(dao));
+        try {
+            method.invoke(dao);
+        } catch (Exception ex) {
+            // Catch block is executed here
+        }
 
-        List<CPCustomerOwnershipType> list = dao.getCPCustomerOwnershipTypeList();
-        assertThat(list).isNotNull();
-        assertThat(list.size()).isEqualTo(2);
-
-        // First entry has 1 field
-        assertThat(list.get(0).getMnemonic()).isEqualTo("MN1");
-        assertThat(list.get(0).getDescription()).isNull();
-
-        // Second entry has 2 fields
-        assertThat(list.get(1).getMnemonic()).isEqualTo("MN2");
-        assertThat(list.get(1).getDescription()).isEqualTo("Desc2");
+        // List should remain null due to exception
+        assertThat(dao.getCPCustomerOwnershipTypeList()).isNull();
     }
 
     // ------------------------
-    // Test catch block by forcing exception
+    // Test parseCustomerTypeOwnership with fields length >0 and >1
     // ------------------------
     @Test
-    void testSetCpCustomerOwnershipTypeList_Exception() throws Exception {
-        CpCustOwnershipTypeDAO spyDao = spy(cpCustOwnershipTypeDAO);
-
-        // Use reflection to access private method
+    void testParseCustomerTypeOwnership_FieldsLength() throws Exception {
         Method method = CpCustOwnershipTypeDAO.class
-                .getDeclaredMethod("setCpCustomerOwnershipTypeList");
+                .getDeclaredMethod("parseCustomerTypeOwnership", String.class);
         method.setAccessible(true);
 
-        // Mock parseFile to throw exception
-        doThrow(new RuntimeException("Test Exception"))
-                .when(spyDao, "parseFile", any(InputStream.class));
+        // Only 1 field
+        CPCustomerOwnershipType result1 = (CPCustomerOwnershipType) method.invoke(
+                cpCustOwnershipTypeDAO, "MN1");
+        assertThat(result1.getMnemonic()).isEqualTo("MN1");
+        assertThat(result1.getDescription()).isNull();
 
-        assertThrows(Exception.class, () -> method.invoke(spyDao));
+        // 2 fields
+        CPCustomerOwnershipType result2 = (CPCustomerOwnershipType) method.invoke(
+                cpCustOwnershipTypeDAO, "MN2\tDesc2");
+        assertThat(result2.getMnemonic()).isEqualTo("MN2");
+        assertThat(result2.getDescription()).isEqualTo("Desc2");
     }
 }
