@@ -1,48 +1,246 @@
-@Test
-public void testMortgagePopulateStatusCodeBranches_CoverLine() {
-    // True branch: statusCode = 123
-    AddError addErrorTrue = mock(AddError.class);
-    when(addErrorTrue.getAddServerStatusCode()).thenReturn("S3");
-    when(addErrorTrue.getAddSeverity()).thenReturn("HIGH");
-    when(addErrorTrue.getStatusCode()).thenReturn(123); // >0 && != MIN_VALUE
-    when(addErrorTrue.getStatusDesc()).thenReturn("desc");
+package com.td.tdi.cp.api.cpqte.service;
 
-    ApiErrorHandler handlerMock = mock(ApiErrorHandler.class);
-    when(handlerMock.getAdditionalErrors(anyString())).thenReturn(Arrays.asList(addErrorTrue));
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
-    try (MockedStatic<ApiErrorHandler> mocked = Mockito.mockStatic(ApiErrorHandler.class)) {
-        mocked.when(ApiErrorHandler::getInstance).thenReturn(handlerMock);
+import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
 
-        try (MockedStatic<ValidatorUtil> validatorMock = Mockito.mockStatic(ValidatorUtil.class)) {
-            validatorMock.when(() -> ValidatorUtil.getParamedMsgText(anyString(), anyList()))
-                         .thenReturn("processedDesc");
+import com.td.tdi.cp.api.cpqte.datafiles.dao.CpMasterDetailDAO;
+import com.td.tdi.cp.api.cpqte.datafiles.model.CpPlanMasterDetail;
+import com.td.tdi.cp.api.cpqte.errorhandling.exception.ApiException;
+import com.td.tdi.cp.api.cpqte.model.*;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.MockitoAnnotations;
+import org.mockito.Spy;
 
-            // Execute method
-            var list = exception.populateMortgageQuotationadditionalstatus("ID");
-            var status = list.get(0);
-            assertEquals(123, status.getStatusCode(), "True branch: statusCode should be set");
-        }
+class MortgageCreditProtectionQuotationServiceTest {
+
+    @InjectMocks
+    private MortgageCreditProtectionQuotationservice mortgageCreditProtectionQuotationServiceMock;
+
+    @Spy
+    private CreditProtectionCustomerEligibility creditProtectionCustomerEligibilityMock;
+
+    @Spy
+    private CreditProtectionCommonUtil creditProtectionCommonUtil;
+
+    @Mock
+    private CpMasterDetailDAO cpMasterDetailDAOMock;
+
+    @Spy
+    private CpPlanMasterDetail cpPlanMasterDetailLMock;
+
+    @Spy
+    private CpPlanMasterDetail cpPlanMasterDetailEMock;
+
+    private static final HashMap<String, BigDecimal> taxRateByProvince = new HashMap<>() {{
+        put("AB", BigDecimal.valueOf(0.00));
+        put("BC", BigDecimal.valueOf(0.00));
+        put("MB", BigDecimal.valueOf(0.07));
+        put("NB", BigDecimal.valueOf(0.00));
+        put("NL", BigDecimal.valueOf(0.00));
+        put("NS", BigDecimal.valueOf(0.00));
+        put("NT", BigDecimal.valueOf(0.08));
+        put("QC", BigDecimal.valueOf(0.08));
+        put("PE", BigDecimal.valueOf(0.09));
+        put("SK", BigDecimal.valueOf(0.00));
+        put("YT", BigDecimal.valueOf(0.00));
+    }};
+
+    @BeforeEach
+    void setUp() {
+        MockitoAnnotations.openMocks(this);
+
+        // Basic CpPlanMasterDetail mocks
+        when(cpPlanMasterDetailLMock.getPlanCode()).thenReturn("ME");
+        when(cpPlanMasterDetailLMock.getPlanType()).thenReturn("L");
+        when(cpPlanMasterDetailLMock.getMinimumAge()).thenReturn(18);
+        when(cpPlanMasterDetailLMock.getMaximumAge()).thenReturn(69);
+        when(cpPlanMasterDetailLMock.getBenefitCalcMethod()).thenReturn(2);
+        when(cpPlanMasterDetailLMock.getTierDiscountIndicator()).thenReturn("Y");
+        when(cpPlanMasterDetailLMock.getMultiCustomerDiscount()).thenReturn("Y");
+        when(cpPlanMasterDetailLMock.getMinimumSelectableThreshold()).thenReturn(new BigDecimal("300000"));
+        when(cpPlanMasterDetailLMock.getMaximumBenefit()).thenReturn(new BigDecimal("1000000"));
+        when(cpPlanMasterDetailLMock.getTier1DiscountPercent()).thenReturn(new BigDecimal(0));
+        when(cpPlanMasterDetailLMock.getTier1MinimumBenefit()).thenReturn(new BigDecimal(0));
+        when(cpPlanMasterDetailEMock.getTierlMaximumBenefit()).thenReturn(new BigDecimal("300000"));
     }
 
-    // False branch: statusCode = 0
-    AddError addErrorFalse = mock(AddError.class);
-    when(addErrorFalse.getAddServerStatusCode()).thenReturn("S3");
-    when(addErrorFalse.getAddSeverity()).thenReturn("HIGH");
-    when(addErrorFalse.getStatusCode()).thenReturn(0); // triggers false branch
-    when(addErrorFalse.getStatusDesc()).thenReturn("desc");
+    // ------------------- BASIC FUNCTIONAL TEST -------------------
+    @Test
+    void testGetCPQuote_initialQuote_withApplicants() throws ApiException {
+        AddCreditProtectionQuotationRqQuotation quotationRq = new AddCreditProtectionQuotationRqQuotation();
+        quotationRq.setRequestTypecd("INITIAL");
+        quotationRq.setContinueofCoverageInd(true);
 
-    when(handlerMock.getAdditionalErrors(anyString())).thenReturn(Arrays.asList(addErrorFalse));
+        AddCreditProtectionQuotationRqQuotationCreditApplication creditApp = new AddCreditProtectionQuotationRqQuotationCreditApplication();
+        creditApp.setLoanAmt(BigDecimal.valueOf(100000));
+        creditApp.setProductTypecd("PT01");
+        creditApp.setPaymentFrequencycd("MONTHLY");
+        creditApp.setTermMonthCnt(24);
+        quotationRq.setCreditApplication(creditApp);
 
-    try (MockedStatic<ApiErrorHandler> mocked = Mockito.mockStatic(ApiErrorHandler.class)) {
-        mocked.when(ApiErrorHandler::getInstance).thenReturn(handlerMock);
+        AddCreditProtectionQuotationRqQuotationApplicantInner applicant = new AddCreditProtectionQuotationRqQuotationApplicantInner();
+        AddCreditProtectionQuotationRqQuotationApplicantInnerIndividual individual = new AddCreditProtectionQuotationRqQuotationApplicantInnerIndividual();
+        individual.setPartyId("P001");
+        individual.setPartvName("John Doe");
+        individual.setAgeNum(30);
+        individual.setTerritorycd("ON");
+        applicant.setIndividual(individual);
+        quotationRq.setApplicant(List.of(applicant));
 
-        try (MockedStatic<ValidatorUtil> validatorMock = Mockito.mockStatic(ValidatorUtil.class)) {
-            validatorMock.when(() -> ValidatorUtil.getParamedMsgText(anyString(), anyList()))
-                         .thenReturn("processedDesc");
+        when(cpMasterDetailDAOMock.getCpPlanMasterDetailListMtg()).thenReturn(new ArrayList<>());
+        when(creditProtectionCustomerEligibilityMock.determinecustomerEligibility(anyBoolean(), any(), anyBoolean(),
+                anyString(), anyInt(), anyString(), anyString(), anyString(), anyBoolean(), any(), anyBoolean(), any()))
+                .thenReturn(new AddCreditProtectionQuotationWarningRsQuotationApplicantInnerQuotationItemInner());
 
-            var list = exception.populateMortgageQuotationadditionalstatus("ID");
-            var status = list.get(0);
-            assertEquals(0, status.getStatusCode(), "False branch: statusCode should remain 0");
-        }
+        AddCreditProtectionQuotationWarningRsQuotation result =
+                mortgageCreditProtectionQuotationServiceMock.getcPQuote(quotationRq, null);
+
+        assertNotNull(result);
+        assertEquals(1, result.getApplicant().size());
+        assertEquals("John Doe", result.getApplicant().get(0).getIndividual().getPartvName());
+    }
+
+    // ------------------- CREDIT AGREEMENT PATH -------------------
+    @Test
+    void testGetCPQuote_creditApplicationNull_usesCreditAgreement() throws ApiException {
+        AddCreditProtectionQuotationRqQuotation quotationRq = new AddCreditProtectionQuotationRqQuotation();
+        quotationRq.setRequestTypecd("INITIAL");
+
+        AddCreditProtectionQuotationRqQuotationCreditAgreement creditAgreement = new AddCreditProtectionQuotationRqQuotationCreditAgreement();
+        creditAgreement.setLoanAmt(BigDecimal.valueOf(50000));
+        creditAgreement.setProductTypecd("PT02");
+        creditAgreement.setPaymentFrequencycd("MONTHLY");
+        creditAgreement.setTermMonthCnt(12);
+        quotationRq.setCreditAgreement(creditAgreement);
+
+        quotationRq.setApplicant(new ArrayList<>());
+        when(cpMasterDetailDAOMock.getCpPlanMasterDetailListMtg()).thenReturn(new ArrayList<>());
+
+        AddCreditProtectionQuotationWarningRsQuotation result =
+                mortgageCreditProtectionQuotationServiceMock.getcPQuote(quotationRq, null);
+
+        assertNotNull(result);
+        assertTrue(result.getApplicant().isEmpty());
+    }
+
+    // ------------------- DAO RETURNS NULL -------------------
+    @Test
+    void testGetCPQuote_cpMasterDetailDaoReturnsNull() throws ApiException {
+        AddCreditProtectionQuotationRqQuotation quotationRq = new AddCreditProtectionQuotationRqQuotation();
+        quotationRq.setRequestTypecd("INITIAL");
+        quotationRq.setCreditApplication(new AddCreditProtectionQuotationRqQuotationCreditApplication());
+
+        AddCreditProtectionQuotationRqQuotationApplicantInner applicant = new AddCreditProtectionQuotationRqQuotationApplicantInner();
+        AddCreditProtectionQuotationRqQuotationApplicantInnerIndividual individual = new AddCreditProtectionQuotationRqQuotationApplicantInnerIndividual();
+        individual.setAgeNum(28);
+        individual.setPartyId("P004");
+        individual.setPartvName("Alice");
+        individual.setTerritorycd("AB");
+        applicant.setIndividual(individual);
+        quotationRq.setApplicant(List.of(applicant));
+
+        when(cpMasterDetailDAOMock.getCpPlanMasterDetailListMtg()).thenReturn(null);
+        when(creditProtectionCustomerEligibilityMock.determinecustomerEligibility(anyBoolean(), any(), anyBoolean(),
+                anyString(), anyInt(), anyString(), anyString(), anyString(), anyBoolean(), any(), anyBoolean(), any()))
+                .thenReturn(new AddCreditProtectionQuotationWarningRsQuotationApplicantInnerQuotationItemInner());
+
+        AddCreditProtectionQuotationWarningRsQuotation result =
+                mortgageCreditProtectionQuotationServiceMock.getcPQuote(quotationRq, null);
+
+        assertNotNull(result);
+        assertEquals("Alice", result.getApplicant().get(0).getIndividual().getPartvName());
+    }
+
+    // ------------------- ELIGIBILITY RETURNS NULL -------------------
+    @Test
+    void testGetCPQuote_determineEligibilityReturnsNull() throws ApiException {
+        AddCreditProtectionQuotationRqQuotation quotationRq = new AddCreditProtectionQuotationRqQuotation();
+        quotationRq.setRequestTypecd("INITIAL");
+        quotationRq.setCreditApplication(new AddCreditProtectionQuotationRqQuotationCreditApplication());
+
+        AddCreditProtectionQuotationRqQuotationApplicantInner applicant = new AddCreditProtectionQuotationRqQuotationApplicantInner();
+        AddCreditProtectionQuotationRqQuotationApplicantInnerIndividual individual = new AddCreditProtectionQuotationRqQuotationApplicantInnerIndividual();
+        individual.setAgeNum(50);
+        individual.setPartyId("P005");
+        individual.setPartvName("Bob");
+        individual.setTerritorycd("SK");
+        applicant.setIndividual(individual);
+        quotationRq.setApplicant(List.of(applicant));
+
+        when(cpMasterDetailDAOMock.getCpPlanMasterDetailListMtg()).thenReturn(new ArrayList<>());
+        when(creditProtectionCustomerEligibilityMock.determinecustomerEligibility(anyBoolean(), any(), anyBoolean(),
+                anyString(), anyInt(), anyString(), anyString(), anyString(), anyBoolean(), any(), anyBoolean(), any()))
+                .thenReturn(null);
+
+        AddCreditProtectionQuotationWarningRsQuotation result =
+                mortgageCreditProtectionQuotationServiceMock.getcPQuote(quotationRq, null);
+
+        assertNotNull(result);
+        assertEquals("Bob", result.getApplicant().get(0).getIndividual().getPartvName());
+        assertTrue(result.getApplicant().get(0).getQuotationItem().isEmpty());
+    }
+
+    // ------------------- COVERAGE PCT < coveragePctL -------------------
+    @Test
+    void testGetCPQuote_coveragePctLessThanCoveragePctL_assignsError() throws ApiException {
+        AddCreditProtectionQuotationRqQuotation quotationRq = new AddCreditProtectionQuotationRqQuotation();
+        quotationRq.setRequestTypecd("SUBSEQUENT");
+        quotationRq.setCreditApplication(new AddCreditProtectionQuotationRqQuotationCreditApplication());
+
+        AddCreditProtectionQuotationRqQuotationApplicantInner applicant = new AddCreditProtectionQuotationRqQuotationApplicantInner();
+        AddCreditProtectionQuotationRqQuotationApplicantInnerIndividual individual = new AddCreditProtectionQuotationRqQuotationApplicantInnerIndividual();
+        individual.setAgeNum(45);
+        individual.setPartyId("P006");
+        individual.setPartvName("Charlie");
+        individual.setTerritorycd("MB");
+        applicant.setIndividual(individual);
+        quotationRq.setApplicant(List.of(applicant));
+
+        CpPlanMasterDetail planDetail = new CpPlanMasterDetail();
+        planDetail.setPlanType("L");
+
+        when(cpMasterDetailDAOMock.getCpPlanMasterDetailListMtg()).thenReturn(List.of(planDetail));
+
+        AddCreditProtectionQuotationWarningRsQuotationApplicantInnerQuotationItemInner quotationItem = new AddCreditProtectionQuotationWarningRsQuotationApplicantInnerQuotationItemInner();
+        quotationItem.setCoveragePct(BigDecimal.valueOf(50));
+
+        when(creditProtectionCustomerEligibilityMock.determinecustomerEligibility(anyBoolean(), any(), anyBoolean(),
+                anyString(), anyInt(), anyString(), anyString(), anyString(), anyBoolean(), any(), anyBoolean(), any()))
+                .thenReturn(quotationItem);
+
+        AddCreditProtectionQuotationWarningRsQuotation result =
+                mortgageCreditProtectionQuotationServiceMock.getcPQuote(quotationRq, null);
+
+        assertNotNull(result);
+        assertEquals("Charlie", result.getApplicant().get(0).getIndividual().getPartvName());
+    }
+
+    // ------------------- EMPTY INDIVIDUAL -------------------
+    @Test
+    void testGetCPQuote_emptyIndividual_skipsProcessing() throws ApiException {
+        AddCreditProtectionQuotationRqQuotation quotationRq = new AddCreditProtectionQuotationRqQuotation();
+        quotationRq.setRequestTypecd("INITIAL");
+        quotationRq.setCreditApplication(new AddCreditProtectionQuotationRqQuotationCreditApplication());
+
+        AddCreditProtectionQuotationRqQuotationApplicantInner applicant = new AddCreditProtectionQuotationRqQuotationApplicantInner();
+        applicant.setIndividual(null); // empty individual
+        quotationRq.setApplicant(List.of(applicant));
+
+        when(cpMasterDetailDAOMock.getCpPlanMasterDetailListMtg()).thenReturn(new ArrayList<>());
+
+        AddCreditProtectionQuotationWarningRsQuotation result =
+                mortgageCreditProtectionQuotationServiceMock.getcPQuote(quotationRq, null);
+
+        assertNotNull(result);
+        assertEquals(1, result.getApplicant().size());
+        assertNull(result.getApplicant().get(0).getIndividual());
     }
 }
