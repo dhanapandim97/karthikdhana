@@ -1,182 +1,96 @@
-// 1️⃣ First branch: checkFirstCoverageTypeL == 0 (already mostly covered but included for completeness)
 @Test
-void testGetCPQuote_firstCoverageTypeL_branch() throws ApiException {
-    AddCreditProtectionQuotationRqQuotation quotationRq = new AddCreditProtectionQuotationRqQuotation();
-    quotationRq.setRequestTypecd("INITIAL");
-
-    AddCreditProtectionQuotationRqQuotationCreditApplication creditApp = new AddCreditProtectionQuotationRqQuotationCreditApplication();
-    creditApp.setLoanAmt(BigDecimal.valueOf(100000));
-    creditApp.setProductTypecd("PT01");
-    creditApp.setPaymentFrequencycd("MONTHLY");
-    creditApp.setTermMonthCnt(24);
-    quotationRq.setCreditApplication(creditApp);
-
+void testIsCocRopcQuote_trueCase() {
+    // Applicant info
     AddCreditProtectionQuotationRqQuotationApplicantInner applicant = new AddCreditProtectionQuotationRqQuotationApplicantInner();
     AddCreditProtectionQuotationRqQuotationApplicantInnerIndividual individual = new AddCreditProtectionQuotationRqQuotationApplicantInnerIndividual();
-    individual.setPartyId("P001");
-    individual.setPartvName("John Doe");
-    individual.setAgeNum(30);
-    individual.setTerritorycd("ON");
+    individual.setAgeNum(50); // age > maximumAge and < maximumAttainAge
     applicant.setIndividual(individual);
+    // Existing coverage items (non-empty)
+    applicant.setExistingCoverageItem(List.of(new AddCreditProtectionQuotationRqQuotationApplicantInnerQuotationItemInner()));
 
-    AddCreditProtectionQuotationRqQuotationApplicantInnerQuotationItemInner itemL =
-            new AddCreditProtectionQuotationRqQuotationApplicantInnerQuotationItemInner();
-    itemL.setInsuranceCoverageTypeCd(CreditProtectionConstants.COVERAGE_TYPE_L);
-
-    applicant.setQuotationItem(List.of(itemL));
-    quotationRq.setApplicant(List.of(applicant));
-
+    // Plan details
     CpPlanMasterDetail planDetail = new CpPlanMasterDetail();
-    planDetail.setPlanType("L");
-    planDetail.setPlanCode("ME");
-    planDetail.setMinimumAge(18);
-    planDetail.setMaximumAge(69);
-    planDetail.setBenefitCalcMethod(2);
-    when(cpMasterDetailDAOMock.getCpPlanMasterDetailListMtg()).thenReturn(List.of(planDetail));
+    planDetail.setMaximumAge(45); // age > maximumAge
+    planDetail.setMaximumAttainAge(55); // age < maximumAttainAge
 
-    when(creditProtectionCustomerEligibilityMock.determineCustomerEligibility(
-            anyBoolean(), any(), anyBoolean(),
-            anyString(), anyInt(), anyString(), anyString(), anyString(),
-            anyBoolean(), any(), anyBoolean(), any()
-    )).thenAnswer(invocation -> {
-        AddCreditProtectionQuotationWarningRsQuotationApplicantInnerQuotationItemInner outItem =
-                new AddCreditProtectionQuotationWarningRsQuotationApplicantInnerQuotationItemInner();
-        outItem.setInsuranceCoverageTypeCd("L");
-        outItem.setCoveragePct(BigDecimal.valueOf(100));
-        outItem.setStatusCd("A");
-        return outItem;
-    });
+    // Product type that satisfies condition
+    String productTypecd = CreditProtectionConstants.PRODUCT_TYPE_CD_MTG;
 
-    AddCreditProtectionQuotationWarningRsQuotation result =
-            mortgageCreditProtectionQuotationServiceMock.getcPQuote(quotationRq, null);
-
-    assertNotNull(result);
-    assertEquals(1, result.getApplicant().size());
-    assertEquals(1, result.getApplicant().get(0).getQuotationItem().size());
+    boolean result = mortgageCreditProtectionQuotationServiceMock.isCocRopcQuote(applicant, planDetail, productTypecd);
+    assertTrue(result, "Method should return true when all conditions are met");
 }
 
-// 2️⃣ Second branch: existsCoverageTypeL true → add L and E types
 @Test
-void testGetCPQuote_reorderCoverageTypes_elseBranches() throws ApiException {
-    AddCreditProtectionQuotationRqQuotation quotationRq = new AddCreditProtectionQuotationRqQuotation();
-    quotationRq.setRequestTypecd("INITIAL");
-
-    AddCreditProtectionQuotationRqQuotationCreditApplication creditApp = new AddCreditProtectionQuotationRqQuotationCreditApplication();
-    creditApp.setLoanAmt(BigDecimal.valueOf(100000));
-    creditApp.setProductTypecd("PT01");
-    creditApp.setPaymentFrequencycd("MONTHLY");
-    creditApp.setTermMonthCnt(24);
-    quotationRq.setCreditApplication(creditApp);
-
+void testIsCocRopcQuote_false_productType() {
+    // Applicant info
     AddCreditProtectionQuotationRqQuotationApplicantInner applicant = new AddCreditProtectionQuotationRqQuotationApplicantInner();
     AddCreditProtectionQuotationRqQuotationApplicantInnerIndividual individual = new AddCreditProtectionQuotationRqQuotationApplicantInnerIndividual();
-    individual.setPartyId("P003");
-    individual.setPartvName("Alice Smith");
-    individual.setAgeNum(40);
-    individual.setTerritorycd("ON");
+    individual.setAgeNum(50);
     applicant.setIndividual(individual);
+    applicant.setExistingCoverageItem(List.of(new AddCreditProtectionQuotationRqQuotationApplicantInnerQuotationItemInner()));
 
-    AddCreditProtectionQuotationRqQuotationApplicantInnerQuotationItemInner itemL =
-            new AddCreditProtectionQuotationRqQuotationApplicantInnerQuotationItemInner();
-    itemL.setInsuranceCoverageTypeCd(CreditProtectionConstants.COVERAGE_TYPE_L);
-
-    AddCreditProtectionQuotationRqQuotationApplicantInnerQuotationItemInner itemE =
-            new AddCreditProtectionQuotationRqQuotationApplicantInnerQuotationItemInner();
-    itemE.setInsuranceCoverageTypeCd(CreditProtectionConstants.COVERAGE_TYPE_E);
-
-    applicant.setQuotationItem(List.of(itemL, itemE));
-    quotationRq.setApplicant(List.of(applicant));
-
+    // Plan details
     CpPlanMasterDetail planDetail = new CpPlanMasterDetail();
-    planDetail.setPlanType("L");
-    planDetail.setPlanCode("ME");
-    planDetail.setMinimumAge(18);
-    planDetail.setMaximumAge(69);
-    planDetail.setBenefitCalcMethod(2);
-    when(cpMasterDetailDAOMock.getCpPlanMasterDetailListMtg()).thenReturn(List.of(planDetail));
+    planDetail.setMaximumAge(45);
+    planDetail.setMaximumAttainAge(55);
 
-    when(creditProtectionCustomerEligibilityMock.determineCustomerEligibility(
-            anyBoolean(), any(), anyBoolean(),
-            anyString(), anyInt(), anyString(), anyString(), anyString(),
-            anyBoolean(), any(), anyBoolean(), any()
-    )).thenAnswer(invocation -> {
-        AddCreditProtectionQuotationWarningRsQuotationApplicantInnerQuotationItemInner outItem =
-                new AddCreditProtectionQuotationWarningRsQuotationApplicantInnerQuotationItemInner();
-        outItem.setInsuranceCoverageTypeCd(invocation.getArgument(0).toString().contains("L") ? "L" : "E");
-        outItem.setCoveragePct(BigDecimal.valueOf(100));
-        outItem.setStatusCd("A");
-        return outItem;
-    });
+    // Product type that fails condition
+    String productTypecd = "OTHER";
 
-    AddCreditProtectionQuotationWarningRsQuotation result =
-            mortgageCreditProtectionQuotationServiceMock.getcPQuote(quotationRq, null);
-
-    assertNotNull(result);
-    assertEquals(1, result.getApplicant().size());
-    assertEquals(2, result.getApplicant().get(0).getQuotationItem().size());
-    assertEquals(CreditProtectionConstants.COVERAGE_TYPE_L,
-            result.getApplicant().get(0).getQuotationItem().get(0).getInsuranceCoverageTypeCd());
-    assertEquals(CreditProtectionConstants.COVERAGE_TYPE_E,
-            result.getApplicant().get(0).getQuotationItem().get(1).getInsuranceCoverageTypeCd());
+    boolean result = mortgageCreditProtectionQuotationServiceMock.isCocRopcQuote(applicant, planDetail, productTypecd);
+    assertFalse(result, "Method should return false if product type does not match");
 }
 
-// 3️⃣ Third branch: last index reached and no L type exists
 @Test
-void testGetCPQuote_lastIndexNoCoverageTypeL() throws ApiException {
-    AddCreditProtectionQuotationRqQuotation quotationRq = new AddCreditProtectionQuotationRqQuotation();
-    quotationRq.setRequestTypecd("INITIAL");
-
-    AddCreditProtectionQuotationRqQuotationCreditApplication creditApp = new AddCreditProtectionQuotationRqQuotationCreditApplication();
-    creditApp.setLoanAmt(BigDecimal.valueOf(100000));
-    creditApp.setProductTypecd("PT01");
-    creditApp.setPaymentFrequencycd("MONTHLY");
-    creditApp.setTermMonthCnt(24);
-    quotationRq.setCreditApplication(creditApp);
-
+void testIsCocRopcQuote_false_noExistingCoverage() {
     AddCreditProtectionQuotationRqQuotationApplicantInner applicant = new AddCreditProtectionQuotationRqQuotationApplicantInner();
     AddCreditProtectionQuotationRqQuotationApplicantInnerIndividual individual = new AddCreditProtectionQuotationRqQuotationApplicantInnerIndividual();
-    individual.setPartyId("P002");
-    individual.setPartvName("Jane Doe");
-    individual.setAgeNum(35);
-    individual.setTerritorycd("ON");
+    individual.setAgeNum(50);
     applicant.setIndividual(individual);
-
-    AddCreditProtectionQuotationRqQuotationApplicantInnerQuotationItemInner item1 =
-            new AddCreditProtectionQuotationRqQuotationApplicantInnerQuotationItemInner();
-    item1.setInsuranceCoverageTypeCd(CreditProtectionConstants.COVERAGE_TYPE_E);
-
-    AddCreditProtectionQuotationRqQuotationApplicantInnerQuotationItemInner item2 =
-            new AddCreditProtectionQuotationRqQuotationApplicantInnerQuotationItemInner();
-    item2.setInsuranceCoverageTypeCd(CreditProtectionConstants.COVERAGE_TYPE_E);
-
-    applicant.setQuotationItem(List.of(item1, item2));
-    quotationRq.setApplicant(List.of(applicant));
+    applicant.setExistingCoverageItem(null); // null list
 
     CpPlanMasterDetail planDetail = new CpPlanMasterDetail();
-    planDetail.setPlanType("E");
-    planDetail.setPlanCode("ME");
-    planDetail.setMinimumAge(18);
-    planDetail.setMaximumAge(69);
-    planDetail.setBenefitCalcMethod(2);
-    when(cpMasterDetailDAOMock.getCpPlanMasterDetailListMtg()).thenReturn(List.of(planDetail));
+    planDetail.setMaximumAge(45);
+    planDetail.setMaximumAttainAge(55);
 
-    when(creditProtectionCustomerEligibilityMock.determineCustomerEligibility(
-            anyBoolean(), any(), anyBoolean(),
-            anyString(), anyInt(), anyString(), anyString(), anyString(),
-            anyBoolean(), any(), anyBoolean(), any()
-    )).thenAnswer(invocation -> {
-        AddCreditProtectionQuotationWarningRsQuotationApplicantInnerQuotationItemInner outItem =
-                new AddCreditProtectionQuotationWarningRsQuotationApplicantInnerQuotationItemInner();
-        outItem.setInsuranceCoverageTypeCd("E");
-        outItem.setCoveragePct(BigDecimal.valueOf(100));
-        outItem.setStatusCd("A");
-        return outItem;
-    });
+    String productTypecd = CreditProtectionConstants.PRODUCT_TYPE_CD_MTG;
 
-    AddCreditProtectionQuotationWarningRsQuotation result =
-            mortgageCreditProtectionQuotationServiceMock.getcPQuote(quotationRq, null);
+    boolean result = mortgageCreditProtectionQuotationServiceMock.isCocRopcQuote(applicant, planDetail, productTypecd);
+    assertFalse(result, "Method should return false if existing coverage item is null");
+}
 
-    assertNotNull(result);
-    assertEquals(1, result.getApplicant().size());
-    assertEquals(2, result.getApplicant().get(0).getQuotationItem().size());
+@Test
+void testIsCocRopcQuote_false_ageBelowMaximumAge() {
+    AddCreditProtectionQuotationRqQuotationApplicantInner applicant = new AddCreditProtectionQuotationRqQuotationApplicantInner();
+    AddCreditProtectionQuotationRqQuotationApplicantInnerIndividual individual = new AddCreditProtectionQuotationRqQuotationApplicantInnerIndividual();
+    individual.setAgeNum(40); // age <= maximumAge
+    applicant.setIndividual(individual);
+    applicant.setExistingCoverageItem(List.of(new AddCreditProtectionQuotationRqQuotationApplicantInnerQuotationItemInner()));
+
+    CpPlanMasterDetail planDetail = new CpPlanMasterDetail();
+    planDetail.setMaximumAge(45);
+    planDetail.setMaximumAttainAge(55);
+
+    String productTypecd = CreditProtectionConstants.PRODUCT_TYPE_CD_MTG;
+
+    boolean result = mortgageCreditProtectionQuotationServiceMock.isCocRopcQuote(applicant, planDetail, productTypecd);
+    assertFalse(result, "Method should return false if age <= maximumAge");
+}
+
+@Test
+void testIsCocRopcQuote_false_ageAboveMaximumAttainAge() {
+    AddCreditProtectionQuotationRqQuotationApplicantInner applicant = new AddCreditProtectionQuotationRqQuotationApplicantInner();
+    AddCreditProtectionQuotationRqQuotationApplicantInnerIndividual individual = new AddCreditProtectionQuotationRqQuotationApplicantInnerIndividual();
+    individual.setAgeNum(60); // age > maximumAttainAge
+    applicant.setIndividual(individual);
+    applicant.setExistingCoverageItem(List.of(new AddCreditProtectionQuotationRqQuotationApplicantInnerQuotationItemInner()));
+
+    CpPlanMasterDetail planDetail = new CpPlanMasterDetail();
+    planDetail.setMaximumAge(45);
+    planDetail.setMaximumAttainAge(55);
+
+    String productTypecd = CreditProtectionConstants.PRODUCT_TYPE_CD_MTG;
+
+    boolean result = mortgageCreditProtectionQuotationServiceMock.isCocRopcQuote(applicant, planDetail, productTypecd);
+    assertFalse(result, "Method should return false if age >= maximumAttainAge");
 }
