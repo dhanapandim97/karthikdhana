@@ -1,15 +1,67 @@
-CpPlanMasterDetail planDetail = new CpPlanMasterDetail();
-planDetail.setPlanType("L");
-planDetail.setPlanCode("ME");
-planDetail.setMinimumAge(18);
-planDetail.setMaximumAge(69);
-planDetail.setBenefitCalcMethod(2);
-planDetail.setTierDiscountIndicator("Y");
-planDetail.setMultiCustomerDiscount("Y");
-planDetail.setMinimumSelectableThreshold(new BigDecimal("300000"));
-planDetail.setMaximumBenefit(new BigDecimal("1000000"));
-planDetail.setTier1DiscountPercent(BigDecimal.ZERO);
-planDetail.setTier1MinimumBenefit(BigDecimal.ZERO);
+@Test
+void testGetCPQuote_initialQuote_withApplicants() throws ApiException {
+    // ------------------- Setup request -------------------
+    AddCreditProtectionQuotationRqQuotation quotationRq = new AddCreditProtectionQuotationRqQuotation();
+    quotationRq.setRequestTypecd("INITIAL");
+    quotationRq.setContinueofCoverageInd(true);
 
-when(cpMasterDetailDAOMock.getCpPlanMasterDetailListMtg())
-        .thenReturn(List.of(planDetail));
+    // Credit Application details
+    AddCreditProtectionQuotationRqQuotationCreditApplication creditApp = new AddCreditProtectionQuotationRqQuotationCreditApplication();
+    creditApp.setLoanAmt(BigDecimal.valueOf(100000));
+    creditApp.setProductTypecd("PT01");
+    creditApp.setPaymentFrequencycd("MONTHLY");
+    creditApp.setTermMonthCnt(24);
+    quotationRq.setCreditApplication(creditApp);
+
+    // Add one applicant
+    AddCreditProtectionQuotationRqQuotationApplicantInner applicant = new AddCreditProtectionQuotationRqQuotationApplicantInner();
+    AddCreditProtectionQuotationRqQuotationApplicantInnerIndividual individual = new AddCreditProtectionQuotationRqQuotationApplicantInnerIndividual();
+    individual.setPartyId("P001");
+    individual.setPartvName("John Doe");
+    individual.setAgeNum(30);
+    individual.setTerritorycd("ON");
+    applicant.setIndividual(individual);
+    quotationRq.setApplicant(List.of(applicant));
+
+    // ------------------- Mock DAO to return a plan -------------------
+    CpPlanMasterDetail planDetail = new CpPlanMasterDetail();
+    planDetail.setPlanType("L");
+    planDetail.setPlanCode("ME");
+    planDetail.setMinimumAge(18);
+    planDetail.setMaximumAge(69);
+    planDetail.setBenefitCalcMethod(2);
+    planDetail.setTierDiscountIndicator("Y");
+    planDetail.setMultiCustomerDiscount("Y");
+    planDetail.setMinimumSelectableThreshold(new BigDecimal("300000"));
+    planDetail.setMaximumBenefit(new BigDecimal("1000000"));
+    planDetail.setTier1DiscountPercent(BigDecimal.ZERO);
+    planDetail.setTier1MinimumBenefit(BigDecimal.ZERO);
+
+    when(cpMasterDetailDAOMock.getCpPlanMasterDetailListMtg()).thenReturn(List.of(planDetail));
+
+    // ------------------- Mock eligibility to avoid internal NPE -------------------
+    when(creditProtectionCustomerEligibilityMock.determineCustomerEligibility(
+            anyBoolean(), any(), anyBoolean(),
+            anyString(), anyInt(), anyString(), anyString(), anyString(),
+            anyBoolean(), any(), anyBoolean(), any()
+    )).thenAnswer(invocation -> {
+        AddCreditProtectionQuotationWarningRsQuotationApplicantInnerQuotationItemInner item =
+                new AddCreditProtectionQuotationWarningRsQuotationApplicantInnerQuotationItemInner();
+        item.setInsuranceCoverageTypeCd("L");
+        item.setCoveragePct(BigDecimal.valueOf(100));
+        item.setStatusCd("A");
+        return item;
+    });
+
+    // ------------------- Call service -------------------
+    AddCreditProtectionQuotationWarningRsQuotation result =
+            mortgageCreditProtectionQuotationServiceMock.getcPQuote(quotationRq, null);
+
+    // ------------------- Assertions -------------------
+    assertNotNull(result);
+    assertEquals(1, result.getApplicant().size());
+    assertEquals("John Doe", result.getApplicant().get(0).getIndividual().getPartvName());
+    assertEquals(1, result.getApplicant().get(0).getQuotationItem().size());
+    assertEquals("L", result.getApplicant().get(0).getQuotationItem().get(0).getInsuranceCoverageTypeCd());
+    assertEquals(BigDecimal.valueOf(100), result.getApplicant().get(0).getQuotationItem().get(0).getCoveragePct());
+}
