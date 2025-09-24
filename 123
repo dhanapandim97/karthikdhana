@@ -1,57 +1,43 @@
-@Test
-void test_setPremiumsForMTG_subsequenceQuote_LCoverage() throws Exception {
-    // Arrange
-    AddCreditProtectionQuotationWarningRsQuotationApplicantInnerQuotationItemInner quotationItemRs =
-            new AddCreditProtectionQuotationWarningRsQuotationApplicantInnerQuotationItemInner();
-    quotationItemRs.setInsuranceCoverageTypeCd("L");
-    quotationItemRs.setStatusCd("A");
-    quotationItemRs.setCoveragePct(BigDecimal.valueOf(50));
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
 
-    CpPlanMasterDetail cpPlan = new CpPlanMasterDetail();
-    cpPlan.setPlanType("L");
-    cpPlan.setPlanCode("ME");
-    cpPlan.setBenefitCalcMethod(CreditProtectionConstants.BENEFIT_CALC_METHOD);
-    when(cpMasterDetailDAOMock.getCpPlanMasterDetailListMtg()).thenReturn(List.of(cpPlan));
+import java.util.HashMap;
+import java.util.Map;
 
-    AddCreditProtectionQuotationRqQuotationApplicantInner applicantInfoRq =
-            new AddCreditProtectionQuotationRqQuotationApplicantInner();
-    applicantInfoRq.setQuotationItem(new ArrayList<>());
+class KeyValueServiceTest {
 
-    BigDecimal loanAmt = BigDecimal.valueOf(100000);
+    private KeyValueService service;
 
-    // Mock util methods
-    doReturn(quotationItemRs).when(creditProtectionCommonUtil).assignErrorMessage(any(), any(), any(), any());
-    doReturn(quotationItemRs).when(creditProtectionCommonBusinessRulesUtil).calculateCoveragePctAmt(
-            any(), any(), anyInt(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), anyBoolean(), anyBoolean(), any());
-    doReturn(quotationItemRs).when(creditProtectionCommonBusinessRulesUtil).calculatePremium(
-            any(), any(), any(), any(), any(), anyInt(), anyInt(), any(), any(), any());
+    @BeforeEach
+    void setUp() {
+        service = new KeyValueService();
+        // Assuming keyValueItems is accessible or can be set via reflection/setter
+        Map<String, String> map = new HashMap<>();
+        map.put("NO_EN", "some value");
+        map.put("EN_FR", "[en]Hello[fr]Bonjour");
+        map.put("FR_EN", "[fr]Bonjour[en]Hello");
+        service.setKeyValueItems(map); // replace with actual injection if different
+    }
 
-    // Act
-    AddCreditProtectionQuotationWarningRsQuotationApplicantInnerQuotationItemInner result =
-            mortgageCreditProtectionQuotationServiceMock.setPremiumsForMTG(
-                    quotationItemRs,
-                    false,
-                    "SUBSEQ", // requestTypeCd triggers subsequence branch
-                    BigDecimal.valueOf(60),
-                    BigDecimal.valueOf(50000),
-                    applicantInfoRq,
-                    "MTG",
-                    ErrorDisplayLanguage.EN,
-                    loanAmt,
-                    BigDecimal.ZERO,
-                    30,
-                    "P123",
-                    BigDecimal.valueOf(20000),
-                    new ArrayList<>(),
-                    "ON",
-                    120,
-                    "M",
-                    false,
-                    false,
-                    BigDecimal.valueOf(0)
-            );
+    @Test
+    void testEnglish_NoEnFlag() {
+        // Covers: if (enFlagIndex < 0) branch
+        String result = service.getKeyValueItem("NO_EN", ErrorDisplayLanguage.ENGLISH);
+        assertEquals("NO_EN:some value", result);
+    }
 
-    // Assert
-    assertNotNull(result);
-    assertEquals(loanAmt.setScale(2), result.getCoverageAmt(), "CoverageAmt should be set to 100% loanAmt");
+    @Test
+    void testEnglish_WithFrAfterEn() {
+        // Covers: if (frFlagIndex >= 0 && frFlagIndex > enFlagIndex) branch
+        String result = service.getKeyValueItem("EN_FR", ErrorDisplayLanguage.ENGLISH);
+        assertEquals("EN_FR:Hello", result);
+    }
+
+    @Test
+    void testEnglish_WithFrBeforeEn() {
+        // Covers: second if FALSE branch (frFlagIndex < enFlagIndex)
+        String result = service.getKeyValueItem("FR_EN", ErrorDisplayLanguage.ENGLISH);
+        assertEquals("FR_EN:Hello", result);
+    }
 }
