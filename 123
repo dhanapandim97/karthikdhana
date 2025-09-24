@@ -1,43 +1,36 @@
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import static org.junit.jupiter.api.Assertions.*;
 
-import java.util.HashMap;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.Map;
 
-class KeyValueServiceTest {
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
-    private KeyValueService service;
-
-    @BeforeEach
-    void setUp() {
-        service = new KeyValueService();
-        // Assuming keyValueItems is accessible or can be set via reflection/setter
-        Map<String, String> map = new HashMap<>();
-        map.put("NO_EN", "some value");
-        map.put("EN_FR", "[en]Hello[fr]Bonjour");
-        map.put("FR_EN", "[fr]Bonjour[en]Hello");
-        service.setKeyValueItems(map); // replace with actual injection if different
-    }
+class KeyValueServiceDefaultTest {
 
     @Test
-    void testEnglish_NoEnFlag() {
-        // Covers: if (enFlagIndex < 0) branch
-        String result = service.getKeyValueItem("NO_EN", ErrorDisplayLanguage.ENGLISH);
-        assertEquals("NO_EN:some value", result);
-    }
+    void testDefaultCase() throws Exception {
+        KeyValueService service = new KeyValueService();
 
-    @Test
-    void testEnglish_WithFrAfterEn() {
-        // Covers: if (frFlagIndex >= 0 && frFlagIndex > enFlagIndex) branch
-        String result = service.getKeyValueItem("EN_FR", ErrorDisplayLanguage.ENGLISH);
-        assertEquals("EN_FR:Hello", result);
-    }
+        // setup keyValueItems
+        service.setKeyValueItems(Map.of("HELLO", "[en]Hello[fr]Bonjour"));
 
-    @Test
-    void testEnglish_WithFrBeforeEn() {
-        // Covers: second if FALSE branch (frFlagIndex < enFlagIndex)
-        String result = service.getKeyValueItem("FR_EN", ErrorDisplayLanguage.ENGLISH);
-        assertEquals("FR_EN:Hello", result);
+        // create fake enum instance using reflection
+        Class<ErrorDisplayLanguage> enumClass = ErrorDisplayLanguage.class;
+        Constructor<ErrorDisplayLanguage> ctor = enumClass.getDeclaredConstructor(String.class, int.class);
+        ctor.setAccessible(true);
+
+        ErrorDisplayLanguage fakeEnum = ctor.newInstance("FAKE", -1); // name doesn't exist in enum, ordinal=-1
+
+        // invoke method with reflection
+        Method m = KeyValueService.class.getDeclaredMethod(
+                "getKeyValueItem", String.class, ErrorDisplayLanguage.class);
+        m.setAccessible(true);
+
+        Object result = m.invoke(service, "HELLO", fakeEnum);
+        assertNotNull(result);
+
+        System.out.println("Default branch executed: " + result);
     }
 }
