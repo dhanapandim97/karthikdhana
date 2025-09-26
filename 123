@@ -1,36 +1,58 @@
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import java.lang.reflect.Constructor;
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
-import java.util.Map;
+import java.math.BigDecimal;
 
-import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
-class KeyValueServiceDefaultTest {
+class QuotationServiceTest {
+
+    private QuotationService service; // class that has getMonthlyPmtAmt()
+    private QuotationUpdate quotationUpdate;
+    private Quotation quotation;
+
+    @BeforeEach
+    void setUp() {
+        service = new QuotationService();
+        quotationUpdate = mock(QuotationUpdate.class);
+        quotation = mock(Quotation.class);
+
+        // inject mocks (if fields are package-private/public)
+        service.quotationUpdate = quotationUpdate;
+        service.quotation = quotation;
+    }
 
     @Test
-    void testDefaultCase() throws Exception {
-        KeyValueService service = new KeyValueService();
+    void testCredAppHasMonthlyPayment() {
+        PartialUpdateCreditProtectionQuotationMortgageProductRqQuotationCreditApplication credApp =
+                mock(PartialUpdateCreditProtectionQuotationMortgageProductRqQuotationCreditApplication.class);
 
-        // setup keyValueItems
-        service.setKeyValueItems(Map.of("HELLO", "[en]Hello[fr]Bonjour"));
+        when(quotationUpdate.getCreditApplication()).thenReturn(credApp);
+        when(credApp.getMonthlyPaymentAmt()).thenReturn(BigDecimal.valueOf(123.456));
 
-        // create fake enum instance using reflection
-        Class<ErrorDisplayLanguage> enumClass = ErrorDisplayLanguage.class;
-        Constructor<ErrorDisplayLanguage> ctor = enumClass.getDeclaredConstructor(String.class, int.class);
-        ctor.setAccessible(true);
+        BigDecimal result = service.getMonthlyPmtAmt();
 
-        ErrorDisplayLanguage fakeEnum = ctor.newInstance("FAKE", -1); // name doesn't exist in enum, ordinal=-1
+        assertEquals(new BigDecimal("123.46"), result); // formatted with 2 decimals
+    }
 
-        // invoke method with reflection
-        Method m = KeyValueService.class.getDeclaredMethod(
-                "getKeyValueItem", String.class, ErrorDisplayLanguage.class);
-        m.setAccessible(true);
+    @Test
+    void testCredAppNullButQuotationHasMonthlyPayment() {
+        when(quotationUpdate.getCreditApplication()).thenReturn(null);
+        when(quotation.getMonthlyPaymentAmt()).thenReturn(BigDecimal.valueOf(789.12));
 
-        Object result = m.invoke(service, "HELLO", fakeEnum);
-        assertNotNull(result);
+        BigDecimal result = service.getMonthlyPmtAmt();
 
-        System.out.println("Default branch executed: " + result);
+        assertEquals(new BigDecimal("789.12"), result); // returns directly
+    }
+
+    @Test
+    void testBothCredAppAndQuotationNull() {
+        when(quotationUpdate.getCreditApplication()).thenReturn(null);
+        when(quotation.getMonthlyPaymentAmt()).thenReturn(null);
+
+        BigDecimal result = service.getMonthlyPmtAmt();
+
+        assertEquals(new BigDecimal("0.00"), result); // fallback case
     }
 }
