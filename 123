@@ -1,69 +1,19 @@
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import java.math.BigDecimal;
-import static org.junit.jupiter.api.Assertions.*;
+import org.mockito.MockedStatic;
+import org.mockito.Mockito;
+import org.springframework.boot.SpringApplication;
 
-class QuotationServiceTest {
-
-    private QuotationService service;
-    private QuotationUpdate quotationUpdate;
-    private Quotation quotation;
-
-    @BeforeEach
-    void setUp() {
-        service = new QuotationService();
-        quotationUpdate = new QuotationUpdate();
-        quotation = new Quotation();
-
-        // inject into service
-        service.quotationUpdate = quotationUpdate;
-        service.quotation = quotation;
-    }
+class MyApplicationTest {
 
     @Test
-    void testCredAppHasMonthlyPayment() {
-        PartialUpdateCreditProtectionQuotationMortgageProductRqQuotationCreditApplication credApp =
-                new PartialUpdateCreditProtectionQuotationMortgageProductRqQuotationCreditApplication();
-        credApp.setMonthlyPaymentAmt(BigDecimal.valueOf(123.456));
+    void testMainMethodWithoutRunningSpring() {
+        try (MockedStatic<SpringApplication> mockStatic = Mockito.mockStatic(SpringApplication.class)) {
+            mockStatic.when(() -> SpringApplication.run(MyApplication.class, new String[]{}))
+                      .thenReturn(null);  // Prevent real execution
 
-        quotationUpdate.setCreditApplication(credApp);
+            MyApplication.main(new String[]{});
 
-        BigDecimal result = service.getMonthlyPmtAmt();
-
-        assertEquals(new BigDecimal("123.46"), result); // formatted
-    }
-
-    @Test
-    void testCredAppNullButQuotationHasMonthlyPayment() {
-        quotationUpdate.setCreditApplication(null);
-        quotation.setMonthlyPaymentAmt(BigDecimal.valueOf(789.12));
-
-        BigDecimal result = service.getMonthlyPmtAmt();
-
-        assertEquals(new BigDecimal("789.12"), result); // direct return
-    }
-
-    @Test
-    void testCredAppPresentButMonthlyPaymentNullAndQuotationHasValue() {
-        PartialUpdateCreditProtectionQuotationMortgageProductRqQuotationCreditApplication credApp =
-                new PartialUpdateCreditProtectionQuotationMortgageProductRqQuotationCreditApplication();
-        credApp.setMonthlyPaymentAmt(null);
-
-        quotationUpdate.setCreditApplication(credApp);
-        quotation.setMonthlyPaymentAmt(BigDecimal.valueOf(456.78));
-
-        BigDecimal result = service.getMonthlyPmtAmt();
-
-        assertEquals(new BigDecimal("456.78"), result); // from quotation
-    }
-
-    @Test
-    void testBothCredAppAndQuotationNull() {
-        quotationUpdate.setCreditApplication(null);
-        quotation.setMonthlyPaymentAmt(null);
-
-        BigDecimal result = service.getMonthlyPmtAmt();
-
-        assertEquals(new BigDecimal("0.00"), result); // fallback
+            mockStatic.verify(() -> SpringApplication.run(MyApplication.class, new String[]{}));
+        }
     }
 }
