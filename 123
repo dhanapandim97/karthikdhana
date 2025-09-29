@@ -1,19 +1,15 @@
-import org.junit.jupiter.api.Test;
-import org.mockito.MockedStatic;
-import org.mockito.Mockito;
-import org.springframework.boot.SpringApplication;
+@Test
+void testInterruptedExceptionInSleep() {
+    // Arrange
+    MyClass obj = new MyClass(); // your class under test
 
-class MyApplicationTest {
+    // Interrupt the test thread BEFORE calling the method
+    Thread.currentThread().interrupt();
 
-    @Test
-    void testMainMethodWithoutRunningSpring() {
-        try (MockedStatic<SpringApplication> mockStatic = Mockito.mockStatic(SpringApplication.class)) {
-            mockStatic.when(() -> SpringApplication.run(MyApplication.class, new String[]{}))
-                      .thenReturn(null);  // Prevent real execution
+    // Act
+    obj.yourMethodWithSleep();
 
-            MyApplication.main(new String[]{});
-
-            mockStatic.verify(() -> SpringApplication.run(MyApplication.class, new String[]{}));
-        }
-    }
+    // ✅ After calling the method, verify the interrupt block was executed
+    // If your code only logs, check that the interrupt flag is no longer set
+    assertFalse(Thread.currentThread().isInterrupted(), "Interrupt should have been handled");
 }
