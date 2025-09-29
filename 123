@@ -1,27 +1,21 @@
-import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
+@Test
+void testInterruptedExceptionDuringSleep_covered() throws Exception {
+    MyClass obj = new MyClass(); // replace with your class
 
-// If using SLF4J logging
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+    Runnable failingRunnable = () -> {
+        throw new PersistenceException("fail"); // triggers retry + sleep
+    };
 
-public class RetryDbOperationTest {
+    Thread testThread = new Thread(() -> obj.retryDboperation(failingRunnable));
 
-    @Test
-    void testInterruptedExceptionDuringSleep() {
-        // Arrange
-        MyClass obj = Mockito.spy(new MyClass()); // Replace MyClass with actual class
+    testThread.start();
 
-        // Prepare a runnable that throws PersistenceException on first attempt
-        Runnable failingRunnable = () -> { throw new PersistenceException("DB fail"); };
+    // ✅ Wait briefly so the method reaches Thread.sleep(...)
+    Thread.sleep(50);
 
-        // Interrupt the current thread BEFORE calling method to force InterruptedException in sleep
-        Thread.currentThread().interrupt();
+    // ✅ Interrupt *WHILE* it's sleeping
+    testThread.interrupt();
 
-        // Act
-        obj.retryDboperation(failingRunnable);
-
-        // Assert - Clear interrupt status so other tests aren't affected
-        Thread.interrupted(); // This resets the flag
-    }
+    // Wait for method to finish
+    testThread.join();
 }
