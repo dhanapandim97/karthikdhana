@@ -1,21 +1,32 @@
 @Test
-void testInterruptedExceptionDuringSleep_covered() throws Exception {
-    MyClass obj = new MyClass(); // replace with your class
+void testSecondInterruptedExceptionBlock() throws Exception {
+    MyClass obj = new MyClass();
 
-    Runnable failingRunnable = () -> {
-        throw new PersistenceException("fail"); // triggers retry + sleep
-    };
+    int retryDur = 5; // match your DB_CONN_RETRY_DUR_KEY
+    int numRetries = 1; // make retries small for test speed
+
+    // Runnable fails every time
+    Runnable failingRunnable = Mockito.spy(new Runnable() {
+        private int count = 0;
+
+        @Override
+        public void run() {
+            count++;
+            throw new PersistenceException("fail " + count);
+        }
+    });
 
     Thread testThread = new Thread(() -> obj.retryDboperation(failingRunnable));
-
     testThread.start();
 
-    // ✅ Wait briefly so the method reaches Thread.sleep(...)
-    Thread.sleep(50);
+    // Wait enough to let the code enter the retry loop and start sleeping
+    Thread.sleep((retryDur * 1000) / 2);
 
-    // ✅ Interrupt *WHILE* it's sleeping
+    // Interrupt while the second sleep is executing
     testThread.interrupt();
 
-    // Wait for method to finish
+    // Wait for completion
     testThread.join();
+
+    // Optionally verify logger calls if needed
 }
