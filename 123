@@ -1,32 +1,4 @@
-@Test
-void testSecondInterruptedExceptionBlock() throws Exception {
-    MyClass obj = new MyClass();
-
-    int retryDur = 5; // match your DB_CONN_RETRY_DUR_KEY
-    int numRetries = 1; // make retries small for test speed
-
-    // Runnable fails every time
-    Runnable failingRunnable = Mockito.spy(new Runnable() {
-        private int count = 0;
-
-        @Override
-        public void run() {
-            count++;
-            throw new PersistenceException("fail " + count);
-        }
-    });
-
-    Thread testThread = new Thread(() -> obj.retryDboperation(failingRunnable));
-    testThread.start();
-
-    // Wait enough to let the code enter the retry loop and start sleeping
-    Thread.sleep((retryDur * 1000) / 2);
-
-    // Interrupt while the second sleep is executing
-    testThread.interrupt();
-
-    // Wait for completion
-    testThread.join();
-
-    // Optionally verify logger calls if needed
-}
+-Djavax.net.ssl.trustStore=C:/Users/<USERNAME>/copilot-trust.jks
+-Djavax.net.ssl.trustStorePassword=changeit
+-Dcom.sun.net.ssl.checkRevocation=false
+-Dcom.sun.security.enableCRLDP=false
