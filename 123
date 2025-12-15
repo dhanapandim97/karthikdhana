@@ -6,3 +6,16 @@ FROM (
     SELECT DATE(TIMESTAMP_FORMAT(your_column, 'DD-MON-RR')) AS date_col
     FROM your_table
 ) t;
+
+
+UPDATE your_table
+SET your_column =
+    MONTHNAME(date_col) || ' ' ||
+    RIGHT('0' || DAY(date_col), 2) || ', ' ||
+    YEAR(date_col)
+FROM (
+    SELECT id,
+           DATE(TIMESTAMP_FORMAT(your_column, 'DD-MON-RR')) AS date_col
+    FROM your_table
+) t
+WHERE your_table.id = t.id;
