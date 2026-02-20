@@ -1,21 +1,36 @@
-SELECT 
-    RTRIM(CHAR(DAY(date_col))) || ' ' ||
-    RTRIM(MONTHNAME(date_col)) || ', ' ||
-    YEAR(date_col)
-FROM (
-    SELECT DATE(TIMESTAMP_FORMAT(your_column, 'DD-MON-RR')) AS date_col
-    FROM your_table
-) t;
+<configuration>
 
+    <property name="LOG_FILE" value="logs/application.log"/>
 
-UPDATE your_table
-SET your_column =
-    MONTHNAME(date_col) || ' ' ||
-    RIGHT('0' || DAY(date_col), 2) || ', ' ||
-    YEAR(date_col)
-FROM (
-    SELECT id,
-           DATE(TIMESTAMP_FORMAT(your_column, 'DD-MON-RR')) AS date_col
-    FROM your_table
-) t
-WHERE your_table.id = t.id;
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>
+                %X{traceabilityId} %d{yyyy-MM-dd HH:mm:ss} %-5level [%thread] %logger{36} - %msg%n
+            </pattern>
+        </encoder>
+    </appender>
+
+    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_FILE}</file>
+
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_FILE}.%d{yyyy-MM-dd}.%i.zip</fileNamePattern>
+            <maxFileSize>100MB</maxFileSize>
+            <maxHistory>30</maxHistory>
+            <totalSizeCap>10GB</totalSizeCap>
+            <cleanHistoryOnStart>true</cleanHistoryOnStart>
+        </rollingPolicy>
+
+        <encoder>
+            <pattern>
+                %X{traceabilityId} %d{yyyy-MM-dd HH:mm:ss} %-5level [%thread] %logger{36} - %msg%n
+            </pattern>
+        </encoder>
+    </appender>
+
+    <root level="INFO">
+        <appender-ref ref="STDOUT"/>
+        <appender-ref ref="FILE"/>
+    </root>
+
+</configuration>
