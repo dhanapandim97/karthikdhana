@@ -1,36 +1,177 @@
-<configuration>
+import com.opencsv.CSVWriterBuilder;
+import com.opencsv.ICSVWriter;
 
-    <property name="LOG_FILE" value="logs/application.log"/>
+import java.io.FileWriter;
+import java.nio.file.Path;
+import java.sql.*;
+import java.text.SimpleDateFormat;
+import java.util.*;
 
-    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
-        <encoder>
-            <pattern>
-                %X{traceabilityId} %d{yyyy-MM-dd HH:mm:ss} %-5level [%thread] %logger{36} - %msg%n
-            </pattern>
-        </encoder>
-    </appender>
+public class ClaimsCsvExporter {
 
-    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
-        <file>${LOG_FILE}</file>
+    // ✅ Java 21 record for row storage
+    record ClaimRow(
+            String claimId,
+            String version,
+            String product,
+            String benefit,
+            String lastName,
+            String firstName,
+            String certificateNumber,
+            double faceAmount,
+            Date incidentDate,
+            int insurerId,
+            double paymentAmount,
+            String recipient,
+            String type,
+            Date transDate,
+            String province
+    ) {}
 
-        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
-            <fileNamePattern>${LOG_FILE}.%d{yyyy-MM-dd}.%i.zip</fileNamePattern>
-            <maxFileSize>100MB</maxFileSize>
-            <maxHistory>30</maxHistory>
-            <totalSizeCap>10GB</totalSizeCap>
-            <cleanHistoryOnStart>true</cleanHistoryOnStart>
-        </rollingPolicy>
+    public static void main(String[] args) throws Exception {
 
-        <encoder>
-            <pattern>
-                %X{traceabilityId} %d{yyyy-MM-dd HH:mm:ss} %-5level [%thread] %logger{36} - %msg%n
-            </pattern>
-        </encoder>
-    </appender>
+        var dbPath = "jdbc:ucanaccess://E:/path/yourdb.accdb"; // 🔥 update
+        var outputFile = Path.of("output.csv");
 
-    <root level="INFO">
-        <appender-ref ref="STDOUT"/>
-        <appender-ref ref="FILE"/>
-    </root>
+        var sql = """
+                SELECT Claims.ClaimId, Claims.Version, Claims.Product, Claims.Benefit,
+                       Claims.CustomerLastName, Claims.CustomerFirstName,
+                       Claims.CertificateNumber, Payments.FaceAmount,
+                       Payments.IncidentDate, PaymentHistory.InsurerId,
+                       PaymentHistory.PaymentAmount, PaymentHistory.Recipient,
+                       PaymentHistory.Type, PaymentHistory.TransDate,
+                       Claims.CustomerProvince
+                FROM (Claims
+                INNER JOIN PaymentHistory ON Claims.ClaimId = PaymentHistory.ClaimId)
+                INNER JOIN Payments ON Claims.ClaimId = Payments.ClaimId
+                WHERE PaymentHistory.InsurerId = ?
+                AND PaymentHistory.TransDate BETWEEN ? AND ?
+                """;
 
-</configuration>
+        var rows = new ArrayList<ClaimRow>();
+
+        var principalMap = new HashMap<String, Double>();
+        var interestMap = new HashMap<String, Double>();
+        var paymentMap = new HashMap<String, Double>();
+
+        try (var conn = DriverManager.getConnection(dbPath);
+             var ps = conn.prepareStatement(sql)) {
+
+            // 🔥 Set parameters
+            ps.setInt(1, 4);
+            ps.setDate(2, Date.valueOf("2024-01-01")); // update
+            ps.setDate(3, Date.valueOf("2024-12-31")); // update
+
+            try (var rs = ps.executeQuery()) {
+
+                while (rs.next()) {
+
+                    var row = new ClaimRow(
+                            rs.getString("ClaimId"),
+                            rs.getString("Version"),
+                            rs.getString("Product"),
+                            rs.getString("Benefit"),
+                            rs.getString("CustomerLastName"),
+                            rs.getString("CustomerFirstName"),
+                            rs.getString("CertificateNumber"),
+                            rs.getDouble("FaceAmount"),
+                            rs.getDate("IncidentDate"),
+                            rs.getInt("InsurerId"),
+                            rs.getDouble("PaymentAmount"),
+                            rs.getString("Recipient"),
+                            rs.getString("Type"),
+                            rs.getDate("TransDate"),
+                            rs.getString("CustomerProvince")
+                    );
+
+                    rows.add(row);
+
+                    var claimId = row.claimId();
+                    var amount = row.paymentAmount();
+
+                    // ✅ Total payment
+                    paymentMap.merge(claimId, amount, Double::sum);
+
+                    // ✅ Principal
+                    if (( "Beneficiary".equals(row.recipient()) || "Bank".equals(row.recipient()))
+                            && "Principal".equals(row.type())) {
+                        principalMap.merge(claimId, amount, Double::sum);
+                    }
+
+                    // ✅ Interest
+                    if (( "Beneficiary".equals(row.recipient()) || "Bank".equals(row.recipient()))
+                            && "Interest".equals(row.type())) {
+                        interestMap.merge(claimId, amount, Double::sum);
+                    }
+                }
+            }
+        }
+
+        // ✅ Date formatter
+        var dateFormat = new SimpleDateFormat("dd-MMM-yy");
+
+        var businessDate = "20250131";
+
+        try (var writer = new FileWriter(outputFile.toFile());
+             var csvWriter = new CSVWriterBuilder(writer)
+                     .withSeparator('|')
+                     .build()) {
+
+            // ✅ Header
+            csvWriter.writeNext(new String[]{
+                    "Product", "Benefit", "Version", "ClaimId", "CertificateNumber",
+                    "IncidentDate", "PrincipalAmt", "InterestAmt", "PaymentAmt",
+                    "Province", "ReportDate", "SourceSystem"
+            });
+
+            int recordCount = 0;
+
+            for (var row : rows) {
+
+                var claimId = row.claimId();
+
+                var principal = principalMap.getOrDefault(claimId, 0.0);
+                var interest = interestMap.getOrDefault(claimId, 0.0);
+                var payment = paymentMap.getOrDefault(claimId, 0.0);
+
+                var incidentDate = row.incidentDate() != null
+                        ? dateFormat.format(row.incidentDate())
+                        : "";
+
+                var reportDate = row.transDate() != null
+                        ? dateFormat.format(row.transDate())
+                        : "";
+
+                csvWriter.writeNext(new String[]{
+                        safe(row.product()),
+                        safe(row.benefit()),
+                        safe(row.version()),
+                        safe(row.claimId()),
+                        safe(row.certificateNumber()),
+                        incidentDate,
+                        String.valueOf(principal),
+                        String.valueOf(interest),
+                        String.valueOf(payment),
+                        safe(row.province()),
+                        reportDate,
+                        "CLMTR"
+                });
+
+                recordCount++;
+            }
+
+            // ✅ Footer
+            csvWriter.writeNext(new String[]{
+                    String.valueOf(recordCount),
+                    businessDate
+            });
+        }
+
+        System.out.println("CSV generated successfully!");
+    }
+
+    // ✅ Null-safe helper
+    private static String safe(String value) {
+        return value != null ? value : "";
+    }
+}
