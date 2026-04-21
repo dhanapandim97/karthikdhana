@@ -1,43 +1,55 @@
 import com.opencsv.CSVWriterBuilder;
-import com.opencsv.ICSVWriter;
 
+import java.io.File;
 import java.io.FileWriter;
 import java.nio.file.Path;
 import java.sql.*;
-import java.text.SimpleDateFormat;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 
-public class ClaimsCsvExporter {
+public class ClaimsJob {
 
-    // ✅ Java 21 record for row storage
+    // ✅ Java 21 record
     record ClaimRow(
             String claimId,
             String version,
             String product,
             String benefit,
-            String lastName,
-            String firstName,
             String certificateNumber,
-            double faceAmount,
-            Date incidentDate,
-            int insurerId,
+            LocalDate incidentDate,
             double paymentAmount,
             String recipient,
             String type,
-            Date transDate,
+            LocalDate transDate,
             String province
     ) {}
 
-    public static void main(String[] args) throws Exception {
+    // =========================
+    // 1️⃣ EXECUTE
+    // =========================
+    public void execute() throws Exception {
 
-        var dbPath = "jdbc:ucanaccess://E:/path/yourdb.accdb"; // 🔥 update
-        var outputFile = Path.of("output.csv");
+        var csvFile = extractDataAndCreateCsv();
+
+        var files = Map.of(
+                csvFile, "/remote/path/output.csv" // 🔥 update
+        );
+
+        uploadFilesThroughSSH(files);
+    }
+
+    // =========================
+    // 2️⃣ EXTRACT + CSV
+    // =========================
+    private File extractDataAndCreateCsv() throws Exception {
+
+        var dbUrl = "jdbc:ucanaccess://E:/path/yourdb.accdb";
+        var outputFile = Path.of("claims_output.csv").toFile();
 
         var sql = """
                 SELECT Claims.ClaimId, Claims.Version, Claims.Product, Claims.Benefit,
-                       Claims.CustomerLastName, Claims.CustomerFirstName,
-                       Claims.CertificateNumber, Payments.FaceAmount,
-                       Payments.IncidentDate, PaymentHistory.InsurerId,
+                       Claims.CertificateNumber, Payments.IncidentDate,
                        PaymentHistory.PaymentAmount, PaymentHistory.Recipient,
                        PaymentHistory.Type, PaymentHistory.TransDate,
                        Claims.CustomerProvince
@@ -54,13 +66,12 @@ public class ClaimsCsvExporter {
         var interestMap = new HashMap<String, Double>();
         var paymentMap = new HashMap<String, Double>();
 
-        try (var conn = DriverManager.getConnection(dbPath);
+        try (var conn = DriverManager.getConnection(dbUrl);
              var ps = conn.prepareStatement(sql)) {
 
-            // 🔥 Set parameters
             ps.setInt(1, 4);
-            ps.setDate(2, Date.valueOf("2024-01-01")); // update
-            ps.setDate(3, Date.valueOf("2024-12-31")); // update
+            ps.setDate(2, Date.valueOf("2024-01-01"));
+            ps.setDate(3, Date.valueOf("2024-12-31"));
 
             try (var rs = ps.executeQuery()) {
 
@@ -71,16 +82,12 @@ public class ClaimsCsvExporter {
                             rs.getString("Version"),
                             rs.getString("Product"),
                             rs.getString("Benefit"),
-                            rs.getString("CustomerLastName"),
-                            rs.getString("CustomerFirstName"),
                             rs.getString("CertificateNumber"),
-                            rs.getDouble("FaceAmount"),
-                            rs.getDate("IncidentDate"),
-                            rs.getInt("InsurerId"),
+                            toLocalDate(rs.getDate("IncidentDate")),
                             rs.getDouble("PaymentAmount"),
                             rs.getString("Recipient"),
                             rs.getString("Type"),
-                            rs.getDate("TransDate"),
+                            toLocalDate(rs.getDate("TransDate")),
                             rs.getString("CustomerProvince")
                     );
 
@@ -92,39 +99,55 @@ public class ClaimsCsvExporter {
                     // ✅ Total payment
                     paymentMap.merge(claimId, amount, Double::sum);
 
-                    // ✅ Principal
-                    if (( "Beneficiary".equals(row.recipient()) || "Bank".equals(row.recipient()))
-                            && "Principal".equals(row.type())) {
-                        principalMap.merge(claimId, amount, Double::sum);
-                    }
-
-                    // ✅ Interest
-                    if (( "Beneficiary".equals(row.recipient()) || "Bank".equals(row.recipient()))
-                            && "Interest".equals(row.type())) {
-                        interestMap.merge(claimId, amount, Double::sum);
+                    // ✅ Principal / Interest using modern switch
+                    switch (row.type()) {
+                        case "Principal" -> {
+                            if (isValidRecipient(row.recipient())) {
+                                principalMap.merge(claimId, amount, Double::sum);
+                            }
+                        }
+                        case "Interest" -> {
+                            if (isValidRecipient(row.recipient())) {
+                                interestMap.merge(claimId, amount, Double::sum);
+                            }
+                        }
                     }
                 }
             }
         }
 
-        // ✅ Date formatter
-        var dateFormat = new SimpleDateFormat("dd-MMM-yy");
+        writeCsv(outputFile, rows, principalMap, interestMap, paymentMap);
 
+        return outputFile;
+    }
+
+    // =========================
+    // CSV WRITING
+    // =========================
+    private void writeCsv(
+            File file,
+            List<ClaimRow> rows,
+            Map<String, Double> principalMap,
+            Map<String, Double> interestMap,
+            Map<String, Double> paymentMap
+    ) throws Exception {
+
+        var formatter = DateTimeFormatter.ofPattern("dd-MMM-yy");
         var businessDate = "20250131";
 
-        try (var writer = new FileWriter(outputFile.toFile());
+        try (var writer = new FileWriter(file);
              var csvWriter = new CSVWriterBuilder(writer)
                      .withSeparator('|')
                      .build()) {
 
-            // ✅ Header
+            // Header
             csvWriter.writeNext(new String[]{
                     "Product", "Benefit", "Version", "ClaimId", "CertificateNumber",
                     "IncidentDate", "PrincipalAmt", "InterestAmt", "PaymentAmt",
                     "Province", "ReportDate", "SourceSystem"
             });
 
-            int recordCount = 0;
+            var count = 0;
 
             for (var row : rows) {
 
@@ -134,44 +157,59 @@ public class ClaimsCsvExporter {
                 var interest = interestMap.getOrDefault(claimId, 0.0);
                 var payment = paymentMap.getOrDefault(claimId, 0.0);
 
-                var incidentDate = row.incidentDate() != null
-                        ? dateFormat.format(row.incidentDate())
-                        : "";
-
-                var reportDate = row.transDate() != null
-                        ? dateFormat.format(row.transDate())
-                        : "";
-
                 csvWriter.writeNext(new String[]{
                         safe(row.product()),
                         safe(row.benefit()),
                         safe(row.version()),
-                        safe(row.claimId()),
+                        safe(claimId),
                         safe(row.certificateNumber()),
-                        incidentDate,
+                        format(row.incidentDate(), formatter),
                         String.valueOf(principal),
                         String.valueOf(interest),
                         String.valueOf(payment),
                         safe(row.province()),
-                        reportDate,
+                        format(row.transDate(), formatter),
                         "CLMTR"
                 });
 
-                recordCount++;
+                count++;
             }
 
-            // ✅ Footer
+            // Footer
             csvWriter.writeNext(new String[]{
-                    String.valueOf(recordCount),
+                    String.valueOf(count),
                     businessDate
             });
         }
-
-        System.out.println("CSV generated successfully!");
     }
 
-    // ✅ Null-safe helper
+    // =========================
+    // SSH UPLOAD
+    // =========================
+    private void uploadFilesThroughSSH(Map<File, String> files) {
+        System.out.println("Uploading: " + files);
+    }
+
+    // =========================
+    // UTIL METHODS
+    // =========================
+    private static boolean isValidRecipient(String recipient) {
+        return "Beneficiary".equals(recipient) || "Bank".equals(recipient);
+    }
+
+    private static LocalDate toLocalDate(Date date) {
+        return Optional.ofNullable(date)
+                .map(Date::toLocalDate)
+                .orElse(null);
+    }
+
+    private static String format(LocalDate date, DateTimeFormatter formatter) {
+        return Optional.ofNullable(date)
+                .map(formatter::format)
+                .orElse("");
+    }
+
     private static String safe(String value) {
-        return value != null ? value : "";
+        return Optional.ofNullable(value).orElse("");
     }
 }
