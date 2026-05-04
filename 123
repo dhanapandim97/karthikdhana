@@ -6,33 +6,31 @@ SELECT
     Claims.CustomerLastName,
     Claims.CustomerFirstName,
     Claims.CertificateNumber,
-    Payments.FaceAmount,
-    Payments.IncidentDate,
-    PaymentHistory.InsurerId,
-    PaymentHistory.TransDate,
+    MAX(Payments.IncidentDate) AS IncidentDate,
+    MAX(PaymentHistory.TransDate) AS ReportDate,
     Claims.CustomerProvince,
 
-    -- ✅ Principal Amount
+    -- ✅ Principal
     SUM(
         IIF(
-            (PaymentHistory.Recipient IN ('Beneficiary','Bank') 
-             AND PaymentHistory.Type = 'Principal'),
+            PaymentHistory.Recipient IN ('Beneficiary','Bank')
+            AND PaymentHistory.Type = 'Principal',
             PaymentHistory.PaymentAmount,
             0
         )
     ) AS PrincipalAmt,
 
-    -- ✅ Interest Amount
+    -- ✅ Interest
     SUM(
         IIF(
-            (PaymentHistory.Recipient IN ('Beneficiary','Bank') 
-             AND PaymentHistory.Type = 'Interest'),
+            PaymentHistory.Recipient IN ('Beneficiary','Bank')
+            AND PaymentHistory.Type = 'Interest',
             PaymentHistory.PaymentAmount,
             0
         )
     ) AS InterestAmt,
 
-    -- ✅ Total Payment Amount
+    -- ✅ Total Payment
     SUM(PaymentHistory.PaymentAmount) AS PaymentAmt
 
 FROM 
@@ -55,8 +53,4 @@ GROUP BY
     Claims.CustomerLastName,
     Claims.CustomerFirstName,
     Claims.CertificateNumber,
-    Payments.FaceAmount,
-    Payments.IncidentDate,
-    PaymentHistory.InsurerId,
-    PaymentHistory.TransDate,
     Claims.CustomerProvince;
