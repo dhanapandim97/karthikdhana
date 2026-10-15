@@ -1,56 +1,8 @@
-SELECT 
-    Claims.ClaimId,
-    Claims.Version,
-    Claims.Product,
-    Claims.Benefit,
-    Claims.CustomerLastName,
-    Claims.CustomerFirstName,
-    Claims.CertificateNumber,
-    MAX(Payments.IncidentDate) AS IncidentDate,
-    MAX(PaymentHistory.TransDate) AS ReportDate,
-    Claims.CustomerProvince,
+<settings xmlns="http://maven.apache.org/SETTINGS/1.2.0"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.2.0
+          https://maven.apache.org/xsd/settings-1.2.0.xsd">
 
-    -- ✅ Principal
-    SUM(
-        IIF(
-            PaymentHistory.Recipient IN ('Beneficiary','Bank')
-            AND PaymentHistory.Type = 'Principal',
-            PaymentHistory.PaymentAmount,
-            0
-        )
-    ) AS PrincipalAmt,
+    <localRepository>D:/Maven/repository</localRepository>
 
-    -- ✅ Interest
-    SUM(
-        IIF(
-            PaymentHistory.Recipient IN ('Beneficiary','Bank')
-            AND PaymentHistory.Type = 'Interest',
-            PaymentHistory.PaymentAmount,
-            0
-        )
-    ) AS InterestAmt,
-
-    -- ✅ Total Payment
-    SUM(PaymentHistory.PaymentAmount) AS PaymentAmt
-
-FROM 
-    (Claims 
-    INNER JOIN PaymentHistory 
-        ON Claims.ClaimId = PaymentHistory.ClaimId)
-    INNER JOIN Payments 
-        ON Claims.ClaimId = Payments.ClaimId
-
-WHERE 
-    PaymentHistory.InsurerId = 4
-    AND PaymentHistory.TransDate 
-        BETWEEN #<StartDate># AND #<EndDate>#
-
-GROUP BY 
-    Claims.ClaimId,
-    Claims.Version,
-    Claims.Product,
-    Claims.Benefit,
-    Claims.CustomerLastName,
-    Claims.CustomerFirstName,
-    Claims.CertificateNumber,
-    Claims.CustomerProvince;
+</settings>
