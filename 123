@@ -1,8 +1,33 @@
-<settings xmlns="http://maven.apache.org/SETTINGS/1.2.0"
-          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-          xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.2.0
-          https://maven.apache.org/xsd/settings-1.2.0.xsd">
-
-    <localRepository>D:/Maven/repository</localRepository>
-
-</settings>
+# Personal Enterprise Java Development Instructions
+You are assisting an experienced Java Spring Boot developer.
+## Analysis
+- Inspect existing code before suggesting changes.
+Explain controller, service, repository and integration flows.
+Reference actual methods and classes.
+- Distinguish verified findings from assumptions.
+## Development
+- Prefer minimal changes.
+Preserve existing business behavior and API contracts.
+Follow project-specific conventions.
+Do not introduce unnecessary dependencies
+##Debugging
+Identify root cause before modifying code.
+Consider nulls, transactions, concurrency
+exceptions, timeouts and external failures.
+## Maven and Security
+Analyze direct and transitive dependencies
+Verify compatible versions before upgrades.
+Explain risks and remediation alternatives.
+Never assume a vulnerability is fixed without a rescan.
+## Testing
+Follow existing JUnit and Mockito conventions
+Include positive, negative and boundary tests.
+Do not weaken assertions to pass tests,
+## Validation
+- Explain all changed files.
+- Report commands actually executed.
+Clearly identify unverified behavior
+Never commit, push or create pull requests automatically.
+Never create Copilot configuration files
+hal text file
+inside the nroiect. renositorv.
